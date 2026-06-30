@@ -27,6 +27,5 @@ MATLAB processing of images
    - numpy
   
   -  set the path for the directory containing the results .mat file from either the GUI processing or the command line processing.
-  -  you need to provide the dt and the scaling factor. You can get the scaling factor by using the MATLAB GUI and the calibration tool if you forgot to save it. For the dt there should be a file 'acquisition_log.txt' in the directory containing all the images. You will find the separation time of the pulse and the fps of the camera.
+  -  You need to provide the dt and the scaling factor. You can get the scaling factor by using the MATLAB GUI and the calibration tool if you forgot to save it. For the dt there should be a file 'acquisition_log.txt' in the directory containing all the images. You will find the separation time of the pulse and the fps of the camera.
      
-
