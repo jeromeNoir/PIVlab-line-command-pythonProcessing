@@ -1,0 +1,222 @@
+%Testing calculation speeds for PIVlab.
+clear all
+close all
+clc
+try
+    delete(gcp('nocreate'))
+catch
+end
+disp('This script performs the four most time consuming calculations in PIVlab')
+disp('and measures the time to complete them.')
+disp('It also runs  a typical PIV analysis with increasing amount of cores.')
+disp('This allows you to seelct the optimum amount of cores.')
+disp('...testing calculation speed, please wait...')
+%%
+dccspeed=zeros(1,128);
+disp('...testing DCC...')
+for j=1:128
+    if mod(j,1.28)==0
+        fprintf('%d%%\n',(round(j/128*100)));drawnow;
+    end
+    %A=rand(64,64)*255;
+    %B=rand(128,128)*255;
+    A=rand(j,j)*255;
+    B=rand(j*2,j*2)*255;
+    tic
+    for i=1:5
+        %for i=1:250
+        %C= conv2(B,rot90(conj(A),2),'valid'); %full line of code
+        Atemp=conj(A);
+        Atemp=rot90(Atemp,2);
+        C=conv2(B,Atemp,'valid');
+    end
+    dccspeed(j)=toc/i*1000;
+
+end
+%%
+dftspeed=zeros(1,128);
+disp('...testing DFT...')
+for j=1:128
+    if mod(j,1.28)==0
+        fprintf('%d%%\n',(round(j/128*100)));drawnow;
+    end
+
+    A=round(rand(j,j)*255);
+    B=round(rand(j,j)*255);
+    tic
+    for i=1:100
+        %C =fftshift(real(ifft2(conj(fft2(A)).*fft2(B)))); %full line of code
+        Atemp=fft2(A);
+        Atemp=conj(Atemp);
+        Btemp=fft2(B);
+        Atemp=(Atemp.*Btemp);
+        Atemp=ifft2(Atemp);
+        Atemp=real(Atemp);
+        C=fftshift(Atemp);
+    end
+    dftspeed(j)=toc/i*1000;
+end
+%%
+disp('...testing linear window deformation...')
+A=679:743;
+B=(71:135)';
+C=round(rand(65,65)*255);
+D=repmat(680:743,64,1)+rand(64,64);
+E=repmat((72:135)',1,64)+rand(64,64);
+tic
+for i = 1:6000
+    F=interp2(A,B,double(C),D,E,'*linear');
+end
+linspeed=toc/i*1000;
+%%
+disp('...testing spline window deformation...')
+tic
+for i = 1:1600
+    F=interp2(A,B,double(C),D,E,'*spline');
+end
+splspeed=toc/i*1000;
+
+%%
+disp('...checking parallel computing availability...')
+try
+    ppool=parpool;
+    if ppool.Connected == 1
+        parallel_avail=1;
+    else
+        parallel_avail=0;
+    end
+catch
+    parallel_avail=0;
+end
+if parallel_avail==1
+    disp('...testing parallel computing performance...')
+    pause(1)
+    tic
+    %parallel
+    parfor k=1:50
+        for j=1:10000
+            A=round(rand(64,64)*255);
+            B=round(rand(64,64)*255);
+            C =fftshift(real(ifft2(conj(fft2(A)).*fft2(B)))); %full line of code
+        end
+    end
+    parallel_speed=toc;
+    %serial
+    tic
+    for k=1:50
+        for j=1:1000 %10x less tests for serial
+            A=round(rand(64,64)*255);
+            B=round(rand(64,64)*255);
+            C =fftshift(real(ifft2(conj(fft2(A)).*fft2(B)))); %full line of code
+        end
+    end
+    serial_speed=toc*10;
+end
+
+%% real piv calculation, multiple workers, find optimum
+disp('...testing typical PIV performance...')
+if parallel_avail==1
+    [~, coreInfo] = evalc('feature(''numcores'')');
+    LASTN = maxNumCompThreads(coreInfo);
+    delete(gcp('nocreate'))
+    ppool=parpool(LASTN);
+    coreInfo=ppool.NumWorkers; %reduce amount of available cores to the available limit.
+    maxNumCompThreads(coreInfo);
+end
+numtests=40;
+try
+    delete(gcp('nocreate'))
+catch
+end
+for i=1:3
+    tic
+    A=rand(2000,2000);A(A<0.5)=0;%generate fake particle images
+    A=uint8(imgaussfilt(A,2)*255);
+    B=circshift(A,5);
+    subtracter=toc;
+end
+
+tic
+for i=1:numtests
+    A=rand(2000,2000);A(A<0.5)=0;%generate fake particle images
+    A=uint8(imgaussfilt(A,2)*255);
+    B=circshift(A,5);
+    A=preproc.PIVlab_preproc(in=A, roirect=[], clahe=1, clahesize=15, ...
+        highp=0, highpsize=0, intenscap=0, wienerwurst=0, ...
+        wienerwurstsize=0, minintens=0, maxintens=1);
+    B=preproc.PIVlab_preproc(in=B, roirect=[], clahe=1, clahesize=15, ...
+        highp=0, highpsize=0, intenscap=0, wienerwurst=0, ...
+        wienerwurstsize=0, minintens=0, maxintens=1);
+    [x,y,u,v,type,~,~]=piv.piv_FFTmulti( ...
+        image1=A, image2=B, interrogationarea=128, step=64, subpixfinder=1, ...
+        mask_inpt=[], roi_inpt=[], passes=3, int2=64, int3=32, int4=32, ...
+        imdeform='*linear', repeat=0, mask_auto=0, do_linear_correlation=0, ...
+        do_correlation_matrices=0, repeat_last_pass=0, delta_diff_min=0);
+    [u,v]=postproc.PIVlab_postproc( ...
+        u=u, v=v, calu=1, calv=1, valid_vel=[], do_stdev_check=1, ...
+        stdthresh=8, do_local_median=1, neigh_thresh=3);
+end
+proctime=toc/numtests;
+proctime=proctime-subtracter;
+if parallel_avail==1
+    proctime_parallel=[];
+    cntr=1;
+    for cores=(2:2:coreInfo)
+        disp(['...testing with ' num2str(cores) ' cores...'])
+        delete(gcp('nocreate'))
+        ppool=parpool(cores);
+        pause(1)
+        tic
+        parfor i=1:numtests
+            A=rand(2000,2000);A(A<0.5)=0;%generate fake particle images
+            A=uint8(imgaussfilt(A,2)*255);
+            B=circshift(A,5);
+            A=preproc.PIVlab_preproc(in=A, roirect=[], clahe=1, clahesize=15, ...
+                highp=0, highpsize=0, intenscap=0, wienerwurst=0, ...
+                wienerwurstsize=0, minintens=0, maxintens=1);
+            B=preproc.PIVlab_preproc(in=B, roirect=[], clahe=1, clahesize=15, ...
+                highp=0, highpsize=0, intenscap=0, wienerwurst=0, ...
+                wienerwurstsize=0, minintens=0, maxintens=1);
+            [x,y,u,v,type,~,~]=piv.piv_FFTmulti( ...
+                image1=A, image2=B, interrogationarea=128, step=64, subpixfinder=1, ...
+                mask_inpt=[], roi_inpt=[], passes=3, int2=64, int3=32, int4=32, ...
+                imdeform='*linear', repeat=0, mask_auto=0, do_linear_correlation=0, ...
+                do_correlation_matrices=0, repeat_last_pass=0, delta_diff_min=0);
+            [u,v]=postproc.PIVlab_postproc( ...
+                u=u, v=v, calu=1, calv=1, valid_vel=[], do_stdev_check=1, ...
+                stdthresh=8, do_local_median=1, neigh_thresh=3);
+        end
+        proctime_parallel(cntr)=toc/numtests;
+        proctime_parallel(cntr)=proctime_parallel(cntr)-subtracter;
+        cntr=cntr+1;
+    end
+    proctime=[proctime proctime_parallel];
+     maxNumCompThreads(LASTN);
+end
+disp('...finished')
+
+%%
+disp('----------------------------------------')
+disp('Your results (time per operation):')
+disp(['mean DCC calculation speed:   ' num2str(mean(dccspeed)) ' ms'])
+disp(['mean DFT calculation speed:   ' num2str(mean(dftspeed)) ' ms'])
+disp(['Linear interpolation speed:   ' num2str(linspeed) ' ms'])
+disp(['Spline interpolation speed:   ' num2str(splspeed) ' ms'])
+if parallel_avail==1
+    disp(['Speed increase with parallel computing:   ' num2str(round(serial_speed/parallel_speed,1)) 'x'])
+end
+ax=plotyy([1:128],dccspeed,[1:128],dftspeed);
+title('Calculation speed [ms] of DCC and DFT')
+xlabel('interrogation window size [px]')
+ylabel(ax(1), 'DCC speed [ms]');
+ylabel(ax(2), 'DFT speed [ms]');
+
+if parallel_avail==1
+    figure;
+    bar([1 (2:2:coreInfo)], proctime,'linewidth',2)
+    title('Speed for a representative PIV analysis (4 MP, three passes).')
+    xlabel('Nr. of cores')
+    ylabel('Speed in s')
+else
+    disp(['Speed for a representative PIV analysis:   ' num2str(proctime) ' s'])
+end

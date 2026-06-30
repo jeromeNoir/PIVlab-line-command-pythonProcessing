@@ -7,20 +7,27 @@
 % The script is written as a teaching example and therefore keeps the
 % workflow explicit instead of hiding steps in helper functions.
 
-clc
-clear
-close all
 
 %% Tell MATLAB where the PIVlab package folders are
 %project_root = fileparts(fileparts(mfilename('/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_bottomOnly/')))
-project_root = '/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_bottomOnly/'
-run_folder = 'frot050_flib040_dphi2deg/'
+project_root = '/Volumes/Archives/TOPOLIB_TopBottom/k6_TopBottom';
+run_folder = 'frot050_flib0405_dphi2deg_SS1';
+image_folder = fullfile(project_root,run_folder);
 file_pattern = '*.tif'; % for example '*.bmp', '*.tif', '*.png', '*.jpg'
-image_folder = fullfile(project_root, run_folder);
-file_results = fullfile(project_root,run_folder, 'PIVlab_results_uncalibrated.mat');
+
+local_folder = '/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k6_TopBottom';
+results_folder = fullfile(local_folder,run_folder);
+file_results = fullfile(results_folder, 'PIVlab_results_uncalibrated.mat');
+file_figure = fullfile(results_folder, 'PIVlab_figure_uncalibrated_firstFrame.jpg');
 
 
-addpath(project_root)
+% addpath(project_root)
+
+if ~exist(results_folder, 'dir')
+    mkdir(results_folder);
+    disp(['Created results folder: ' results_folder])
+end
+
 
 disp(['Looking for ' file_pattern ' files in: ' image_folder])
 
@@ -44,7 +51,7 @@ disp(['Found ' num2str(numel(image_names)) ' images, i.e. ' num2str(num_pairs) '
 roi_inpt = [];            % [] means: use the full image. Otherwise: [x, y, width, height]
 clahe = 1;                % contrast enhancement
 clahesize = 64;           % size of the local contrast tiles
-highp = 0;                % high-pass filter
+highp = 1;                % high-pass filter
 highpsize = 15;           % size of the high-pass filter
 intenscap = 0;            % intensity capping
 wienerwurst = 0;          % Wiener filter
@@ -202,5 +209,13 @@ v_filt(typevector == 0) = NaN;
 disp('Processing finished.')
 % disp('Now run Example_scripts/PIVlab_visualize_commandline.m to create figures from the results.')
 
+%% Plot 1: one single velocity field
+figure
+hold on
+quiver(x(:,:,1), y(:,:,1), ...
+    u_filt(:,:,1), v_filt(:,:,1), 'g')
+hold off
+title(['Filtered velocity field of image pair ' num2str(1)])
+saveas(gcf, file_figure);
 
 save(file_results)

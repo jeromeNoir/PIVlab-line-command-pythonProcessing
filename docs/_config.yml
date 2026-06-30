@@ -1,0 +1,32 @@
+title: PIVlab
+description: Open Source Particle Image Velocimetry Software
+show_downloads: true
+google_analytics:
+theme: jekyll-theme-leap-day
+baseurl: ""
+collections: 
+  wiki:
+    output: true
+    permalink: /wiki/:name/
+  docs:
+    output: true
+    permalink: /:name/
+  news:
+    output: true
+    permalink: /news/:name/
+navigation:
+  - title: "Home"
+    url: "/"
+  - title: "Downloads"
+    url: "/downloads"
+  - title: "Wiki"
+    url: "/wiki"
+  - title: "Hardware"
+    url: "/hardware"
+  - title: "Screenshots"
+    url: "/screenshots"
+  - title: "References"
+    url: "/references"
+  - title: "Service and Support"
+    url: "/support"
+    

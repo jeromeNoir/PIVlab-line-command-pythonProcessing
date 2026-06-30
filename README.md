@@ -1,31 +1,41 @@
-# PIVlab-line-command-pythonProcessing
-for Matlab command line processing and python postprocessing of PIVlab acquired images.
+# PIVlab - particle image velocimetry (PIV) tool with GUI
+**[http://www.PIVlab.de](http://www.PIVlab.de)**
+
+*PIVlab is a free and open-source particle image velocimetry (PIV) software and is currently the most frequently cited PIV tool on the market. It can be used to calculate the velocity distribution within imported (or captured) images. It can also control [OPTOLUTION's lasers, cameras and synchronizers](https://www.optolution.com/en/products/particle-image-velocimetry-piv), and derive, display and export multiple parameters of the flow pattern. The simple graphical user interface makes PIV data acquisition and data post-processing fast and efficient.*
+
+**Download PIVlab:**
+*   as a free [stand-alone program for windows computers](https://github.com/Shrediquette/PIVlab/releases/latest/download/PIVlab_installer.exe) (all features, no requirements)
+*   as free [toolbox inside Matlab for every operating system](https://github.com/Shrediquette/PIVlab/releases/latest/download/PIVlab.mltbx) (all features, Matlab required)
+*   as free [web browser-based app by using Matlab online](https://matlab.mathworks.com/open/fileexchange/v1?id=27659) (no hardware interaction, free Mathworks account required)
+
+![PIVlab_screenshot](https://github.com/Shrediquette/PIVlab/blob/main/images/PIVlab_screenshot.jpg)
+
+**   **
+**PIVlab comes with it's own unique hardware: Pulsed lasers, LEDs, synchronizers and cameras are available here: [Optolution.com](https://www.optolution.com/en/products/particle-image-velocimetry-piv/)**
+**   **
+
+Video tutorial 1/3: Quickstart guide
+https://youtube.com/watch?v=g2hcTRAzBvY
+
+Video tutorial 2/3: Pre-processing, analysis and data validation
+https://youtube.com/watch?v=15RTs_USHFk
+
+Video tutorial 3/3: Data exploration and data export
+https://youtube.com/watch?v=47NCB_RFiE8
+
+PIVlab controlling cameras, lasers, etc.
+https://youtu.be/8B5M31NWlJc
 
 
-MATLAB processing of images
-- You need to get the MATLAB files from PIVlab: use the latest beta version (https://github.com/Shrediquette/PIVlab/archive/refs/heads/main.zip)
-    - save the directory on your computer, and add the directory and sub-directory to the MATLAB path    
-    - If you have used the Apps from optolution in your MATLAB before, make sure you delete all the files or at least remove all the directories from the MATLAB path.
-  
-- In the folder "Example_scripts" replace the files by the one provided on this repository
-
-- You can run the MATLAB GUI: PIVlab_GUI.m, then import the images and process them in the GUI, recommanded at least for the first pair to set all the parameters and to use the calibration tool to get the px -> m,
-- don't forget to click on clear calibration before exporting the frame if you want process uncalibrated frame (recommanded).
-- If you use the GUI, once all frames have been processed and validation applied, go to file -> export: choose MAT file and click on 'all frames', best is to not apply any calibration (go calibration and click on clear calibration to be sure). write down the px->m value and the dt.
-- or you can use the scripts you have copied in the 'Example_scripts' directory, it will save all the uncalibrated data in a results file.
+**Installation:** [https://github.com/Shrediquette/PIVlab/wiki#installation-instructions](https://shrediquette.github.io/PIVlab/wiki/0-installation/)
 
 
- PYTHON processing:
- - copy the python notebook on your computer
- - you will need
-   - openCV
-   - dpivsoft (pip install dpivsoft) - optional, I use it for the vorticity and divergence calculation but you could build your own routine
-   - scipy
-   - mpl_toolkits
-   - os
-   - matplotlib
-   - numpy
-  
-  -  set the path for the directory containing the results .mat file from either the GUI processing or the command line processing.
-  -  You need to provide the dt and the scaling factor. You can get the scaling factor by using the MATLAB GUI and the calibration tool if you forgot to save it. For the dt there should be a file 'acquisition_log.txt' in the directory containing all the images. You will find the separation time of the pulse and the fps of the camera.
-     
+**Wiki with information, tutorials, manuals etc:** [https://github.com/Shrediquette/PIVlab/wiki](https://shrediquette.github.io/PIVlab/wiki)
+
+
+PIVlab [can be run online using MATLAB online](https://youtu.be/EQHfAmRxXw4?si=X77HabqAIbuHRIGT). MATLAB online is free (after registration) with a limited usage time per user (20 hrs/month):
+[![Open in MATLAB Online](https://www.mathworks.com/images/responsive/global/open-in-matlab-online.svg)](https://matlab.mathworks.com/open/github/v1?repo=Shrediquette/PIVlab&file=PIVlab_GUI.m)
+
+
+
+Thanks to the [thousands of publications that use PIVlab for research](https://scholar.google.de/scholar?hl=de&as_sdt=0%2C5&q=%28%22pivlab%22+%7C+%22piv+lab%22%29+AND+%28%22piv%22+%7C+%22particle+image+velocimetry%22%29+-%22%40pivlab.net%22&btnG=)!
