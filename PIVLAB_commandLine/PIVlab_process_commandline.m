@@ -20,14 +20,27 @@ results_folder = fullfile(local_folder,run_folder);
 file_results = fullfile(results_folder, 'PIVlab_results_uncalibrated.mat');
 file_figure = fullfile(results_folder, 'PIVlab_figure_uncalibrated_firstFrame.jpg');
 
-
-% addpath(project_root)
-
 if ~exist(results_folder, 'dir')
     mkdir(results_folder);
     disp(['Created results folder: ' results_folder])
 end
 
+% Copy auxiliary files from image_folder to results_folder if they exist
+auxFiles = {'acquisition_log.txt', 'background.mat', 'PIVlab_Capture_Session.mat'};
+for k = 1:numel(auxFiles)
+    src = fullfile(image_folder, auxFiles{k});
+    dst = fullfile(results_folder, auxFiles{k});
+    if exist(src, 'file')
+        try
+            copyfile(src, dst);
+            disp(['Copied ' auxFiles{k} ' to results folder.'])
+        catch ME
+            warning('Failed to copy %s: %s', auxFiles{k}, ME.message)
+        end
+    end
+end
+
+% addpath(project_root)
 
 disp(['Looking for ' file_pattern ' files in: ' image_folder])
 
