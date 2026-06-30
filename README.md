@@ -6,7 +6,8 @@ This a modified branch of the original one from PIVLab.
 **[http://www.PIVlab.de](http://www.PIVlab.de)**
 
 - I modified the PIVLab_command_line folder to fit the processing we do at the FlowLab, mostly the path.
-- There is an additional folder PIVLab_pythonProcessing that contains a python notebook to process the PIV field saved either from the GUI of PIVLab or from the command line processing session. 
+- There is an additional folder PIVLab_pythonProcessing that contains a python notebook to process the PIV field saved either from the GUI of PIVLab or from the command line processing session.
+- I added a matlab file to process all the runs in a project folder 'PIVLAB_Batchprocessing_commandline.mat'
 
 
 *PIVlab is a free and open-source particle image velocimetry (PIV) software and is currently the most frequently cited PIV tool on the market. It can be used to calculate the velocity distribution within imported (or captured) images. It can also control [OPTOLUTION's lasers, cameras and synchronizers](https://www.optolution.com/en/products/particle-image-velocimetry-piv), and derive, display and export multiple parameters of the flow pattern. The simple graphical user interface makes PIV data acquisition and data post-processing fast and efficient.*
