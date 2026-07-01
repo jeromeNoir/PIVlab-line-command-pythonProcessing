@@ -12,8 +12,8 @@
 
 
 %% Tell MATLAB where the images and the results should live
-project_root = '/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/Test_Batch';
-local_folder = '/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/Test_Batch/results-batch-process';
+project_root = '/Volumes/Archives/TOPOLIB_TopBottom/k6_TopBottom';
+local_folder = '/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k6_TopBottom';
 file_pattern = '*.tif'; % for example '*.bmp', '*.tif', '*.png', '*.jpg'
 
 % addpath(project_root)
@@ -34,6 +34,7 @@ disp(['Found ' num2str(numel(run_folders)) ' sub-folders to process in: ' projec
 
 %% Define preprocessing settings
 % These settings are applied to every image before the PIV analysis.
+do_bg_subtract = 0;       % 1 = subtract background.mat (if present in the run folder) from each raw image, 0 = never subtract
 roi_inpt = [];            % [] means: use the full image. Otherwise: [x, y, width, height]
 clahe = 1;                % contrast enhancement
 clahesize = 64;           % size of the local contrast tiles
@@ -112,6 +113,33 @@ for folder_idx = 1:numel(run_folders)
     num_pairs = numel(image_names) / 2;
     disp(['Found ' num2str(numel(image_names)) ' images, i.e. ' num2str(num_pairs) ' image pairs.'])
 
+    %% Check for a background.mat in this run folder
+    % PIVlab stores per-frame backgrounds as bg_img_A (1st image of a pair)
+    % and bg_img_B (2nd image of a pair). If present and do_bg_subtract is on,
+    % these are subtracted from the raw images before preprocessing.
+    bg_file = fullfile(image_folder, 'background.mat');
+    bg_img_A = [];
+    bg_img_B = [];
+    use_bg = false;
+    if do_bg_subtract && exist(bg_file, 'file')
+        try
+            bg_data = load(bg_file, 'bg_img_A', 'bg_img_B');
+            if isfield(bg_data, 'bg_img_A') && isfield(bg_data, 'bg_img_B') ...
+                    && ~isempty(bg_data.bg_img_A) && ~isempty(bg_data.bg_img_B)
+                bg_img_A = bg_data.bg_img_A;
+                bg_img_B = bg_data.bg_img_B;
+                use_bg = true;
+                disp('Found background.mat: background subtraction is ENABLED for this folder.')
+            else
+                warning('background.mat in %s does not contain valid bg_img_A/bg_img_B. Skipping background subtraction.', image_folder)
+            end
+        catch ME
+            warning('Failed to load background.mat in %s: %s. Skipping background subtraction.', image_folder, ME.message)
+        end
+    elseif do_bg_subtract
+        disp('No background.mat found: background subtraction is DISABLED for this folder.')
+    end
+
     %% Create the results folder
     if ~exist(results_folder, 'dir')
         mkdir(results_folder);
@@ -160,6 +188,20 @@ for folder_idx = 1:numel(run_folders)
         %% Load the raw images
         image1_raw = imread(fullfile(image_folder, image_name_1));
         image2_raw = imread(fullfile(image_folder, image_name_2));
+
+        %% Subtract the background (if enabled and available for this folder)
+        % Matches PIVlab's convention: the 1st image of a pair uses bg_img_A,
+        % the 2nd uses bg_img_B. The subtraction saturates at 0 for uint8.
+        if use_bg
+            if size(image1_raw, 3) > 1
+                image1_raw = rgb2gray(image1_raw);
+            end
+            if size(image2_raw, 3) > 1
+                image2_raw = rgb2gray(image2_raw);
+            end
+            image1_raw = image1_raw - bg_img_A;
+            image2_raw = image2_raw - bg_img_B;
+        end
 
         %% Preprocess the raw images
         image1_preprocessed = preproc.PIVlab_preproc( ...
@@ -258,6 +300,7 @@ for folder_idx = 1:numel(run_folders)
         'u_filt', 'v_filt', 'typevector_filt', ...
         'image_folder', 'results_folder', 'image_names', 'num_pairs', ...
         'run_folder', 'file_pattern', ...
+        'do_bg_subtract', 'use_bg', ...
         'roi_inpt', 'clahe', 'clahesize', 'highp', 'highpsize', 'intenscap', ...
         'wienerwurst', 'wienerwurstsize', 'minintens', 'maxintens', ...
         'interrogationarea', 'step', 'subpixfinder', 'mask_inpt', 'passes', ...
