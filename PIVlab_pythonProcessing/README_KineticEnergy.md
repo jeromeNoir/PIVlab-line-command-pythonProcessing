@@ -8,6 +8,12 @@ curve:
 | [`batch_KineticEnergy.py`](batch_KineticEnergy.py) | Loop over every run folder, compute the kinetic-energy time series, write a per-run `.npz`, a combined summary (`.csv` + `.xlsx`), and the resonance figure. |
 | [`process_one_KineticEnergy.py`](process_one_KineticEnergy.py) | Same computation as the batch but for a **single** run; inserts/updates that run's row in the shared summary `.xlsx`/`.csv` and refreshes the figure. |
 | [`plot_KineticEnergy_summary.py`](plot_KineticEnergy_summary.py) | Standalone: (re)draw the resonance figure from an existing summary `.xlsx`/`.csv` without re-reading the (large) `.mat` files. |
+| [`periodogram_KineticEnergy.py`](periodogram_KineticEnergy.py) | Standalone: compute and plot the periodogram of a single run's kinetic-energy time series from its per-run `.npz`. |
+| [`periodogram_KineticEnergy.ipynb`](periodogram_KineticEnergy.ipynb) | Interactive notebook version of the periodogram script — edit a config cell instead of passing command-line flags. |
+| [`fft_KineticEnergy.py`](fft_KineticEnergy.py) | Standalone: compute and plot the FFT amplitude spectrum of a single run's kinetic-energy time series from its per-run `.npz`. |
+| [`fft_KineticEnergy.ipynb`](fft_KineticEnergy.ipynb) | Interactive notebook version of the FFT script — edit a config cell instead of passing command-line flags. |
+| [`psd_KineticEnergy.py`](psd_KineticEnergy.py) | Standalone: estimate and plot the Welch power spectral density (PSD) of a single run's kinetic-energy time series from its per-run `.npz`. |
+| [`psd_KineticEnergy.ipynb`](psd_KineticEnergy.ipynb) | Interactive notebook version of the PSD script — edit a config cell instead of passing command-line flags. |
 
 ---
 
@@ -202,3 +208,211 @@ Options:
   point (e.g. `_SS1`/`_SS2`), detected automatically; not folded into the curve.
 
 Both panels use a logarithmic `Ek` axis.
+
+---
+
+## 6. Periodogram of a single run
+
+`periodogram_KineticEnergy.py` takes the per-run kinetic-energy time series
+(`PostProcessing/KineticEnergy_timeSeries.npz`, produced in
+[§1](#1-what-the-batch-does)) and computes its **periodogram**, to reveal at
+which frequencies the kinetic energy oscillates. It draws two panels:
+
+1. the kinetic-energy time series `Ek(t)`;
+2. the one-sided power spectral density versus frequency.
+
+The periodogram is computed with `scipy.signal.periodogram` (a one-sided,
+power-conserving PSD estimate). The default `boxcar` window gives the classical
+periodogram; another window (`--window hann`, say) trades frequency resolution
+for reduced spectral leakage. The frequency axis uses the sampling frequency
+`fps` stored in the `.npz`. By default the mean of `Ek(t)` is removed first, so
+the DC term does not dwarf the rest. If the libration frequency can be parsed
+from the run name, dashed guides are drawn at `flib` and `2·flib` (kinetic
+energy is quadratic in velocity, so it typically responds at `2·flib`).
+
+```bash
+cd /Users/jeromenoir/polybox/CODES/PIV/PIVLab/PIVlab-line-command-pythonProcessing/PIVlab_pythonProcessing
+PY=/Users/jeromenoir/anaconda3/envs/dpivsoft/bin/python
+
+# pass a run folder (uses its PostProcessing/KineticEnergy_timeSeries.npz)
+$PY periodogram_KineticEnergy.py .../k6_TopBottom/frot050_flib0430_dphi2deg_SS1
+
+# or point directly at the .npz
+$PY periodogram_KineticEnergy.py .../frot050_flib0430_dphi2deg_SS1/PostProcessing/KineticEnergy_timeSeries.npz
+
+# Hann window, keep the mean, linear power axis, and pop up the window
+$PY periodogram_KineticEnergy.py .../frot050_flib0430_dphi2deg_SS1 --window hann --no-detrend --linear --show
+```
+
+By default the figure is saved as `KineticEnergy_Periodogram.png` next to the
+`.npz`.
+
+Options:
+
+| Flag | Meaning |
+| --- | --- |
+| `PATH` (positional) | The run folder or the `KineticEnergy_timeSeries.npz` file. |
+| `-o`, `--output` | Output PNG path. Default: `KineticEnergy_Periodogram.png` beside the `.npz`. |
+| `--no-detrend` | Keep the mean (do not subtract it) before the estimate. |
+| `--window WIN` | Window passed to `scipy.signal.periodogram` (default: `boxcar`). |
+| `--linear` | Use a linear power axis (default is logarithmic). |
+| `--show` | Display the figure window in addition to saving. |
+
+### 6.1 Interactive notebook
+
+[`periodogram_KineticEnergy.ipynb`](periodogram_KineticEnergy.ipynb) does the
+same computation and plot interactively, for exploring one run at a time. Open it
+with the `dpivsoft` kernel and edit the **Configuration** cell instead of passing
+command-line flags:
+
+```python
+PATH    = ".../k6_TopBottom/frot050_flib0430_dphi2deg_SS1"   # run folder or .npz
+DETREND = True        # remove the mean before the estimate (kills the DC spike)
+WINDOW  = "boxcar"    # scipy window; 'boxcar' = classical periodogram, try 'hann'
+LOGY    = True        # logarithmic power axis (False -> linear)
+SAVE    = False       # also write a PNG next to the .npz
+OUTPUT  = None        # PNG path; None -> KineticEnergy_Periodogram.png beside the .npz
+```
+
+Then run the cells top to bottom: the figure is shown inline, the peak frequency
+(ignoring DC) is printed next to `flib`/`2·flib`, and a PNG is written only when
+`SAVE = True`.
+
+---
+
+## 7. FFT of a single run
+
+`fft_KineticEnergy.py` is the same idea as the periodogram in
+[§6](#6-periodogram-of-a-single-run) but shows the raw **FFT** rather than a PSD
+estimate. It takes the per-run kinetic-energy time series
+(`PostProcessing/KineticEnergy_timeSeries.npz`, produced in
+[§1](#1-what-the-batch-does)) and draws two panels:
+
+1. the kinetic-energy time series `Ek(t)`;
+2. the one-sided **amplitude spectrum** `|FFT|` versus frequency.
+
+The FFT is computed with `numpy.fft.rfft`; the amplitude is normalised as
+`|FFT|·2/N` so a pure tone reads at its physical amplitude (the DC and Nyquist
+bins keep the `1/N` scaling). The frequency axis uses the sampling frequency
+`fps` stored in the `.npz`. By default the mean of `Ek(t)` is removed first, so
+the DC term does not dwarf the rest. If the libration frequency can be parsed
+from the run name, dashed guides are drawn at `flib` and `2·flib` (kinetic
+energy is quadratic in velocity, so it typically responds at `2·flib`).
+
+```bash
+cd /Users/jeromenoir/polybox/CODES/PIV/PIVLab/PIVlab-line-command-pythonProcessing/PIVlab_pythonProcessing
+PY=/Users/jeromenoir/anaconda3/envs/dpivsoft/bin/python
+
+# pass a run folder (uses its PostProcessing/KineticEnergy_timeSeries.npz)
+$PY fft_KineticEnergy.py .../k6_TopBottom/frot050_flib0430_dphi2deg_SS1
+
+# or point directly at the .npz
+$PY fft_KineticEnergy.py .../frot050_flib0430_dphi2deg_SS1/PostProcessing/KineticEnergy_timeSeries.npz
+
+# keep the mean, use a linear amplitude axis, and pop up the window
+$PY fft_KineticEnergy.py .../frot050_flib0430_dphi2deg_SS1 --no-detrend --linear --show
+```
+
+By default the figure is saved as `KineticEnergy_FFT.png` next to the `.npz`.
+
+Options:
+
+| Flag | Meaning |
+| --- | --- |
+| `PATH` (positional) | The run folder or the `KineticEnergy_timeSeries.npz` file. |
+| `-o`, `--output` | Output PNG path. Default: `KineticEnergy_FFT.png` beside the `.npz`. |
+| `--no-detrend` | Keep the mean (do not subtract it) before the FFT. |
+| `--linear` | Use a linear amplitude axis (default is logarithmic). |
+| `--show` | Display the figure window in addition to saving. |
+
+### 7.1 Interactive notebook
+
+[`fft_KineticEnergy.ipynb`](fft_KineticEnergy.ipynb) does the same computation and
+plot interactively, for exploring one run at a time. Open it with the `dpivsoft`
+kernel and edit the **Configuration** cell instead of passing command-line flags:
+
+```python
+PATH    = ".../k6_TopBottom/frot050_flib0430_dphi2deg_SS1"   # run folder or .npz
+DETREND = True    # remove the mean before the FFT (kills the DC spike)
+LOGY    = True    # logarithmic amplitude axis (False -> linear)
+SAVE    = False   # also write a PNG next to the .npz
+OUTPUT  = None    # PNG path; None -> KineticEnergy_FFT.png beside the .npz
+```
+
+Then run the cells top to bottom: the figure is shown inline, the peak frequency
+(ignoring DC) is printed next to `flib`/`2·flib`, and a PNG is written only when
+`SAVE = True`. The compute cell also returns the raw complex spectrum (`fft`) if
+you need the phase.
+
+---
+
+## 8. Welch PSD of a single run
+
+`psd_KineticEnergy.py` estimates the **power spectral density** of a run's
+kinetic-energy time series with **Welch's method** (`scipy.signal.welch`). Unlike
+the raw periodogram in [§6](#6-periodogram-of-a-single-run), Welch averages the
+periodograms of overlapping windowed segments, giving a smoother, lower-variance
+spectrum at the cost of frequency resolution — useful when the periodogram looks
+too noisy to read. It takes the per-run
+`PostProcessing/KineticEnergy_timeSeries.npz` (produced in
+[§1](#1-what-the-batch-does)) and draws two panels:
+
+1. the kinetic-energy time series `Ek(t)`;
+2. the one-sided Welch PSD versus frequency.
+
+Each segment is `--nperseg` samples long (default 256, clamped to the series
+length) with 50% overlap and a Hann window by default (`--window`). Larger
+`nperseg` → finer frequency resolution but fewer segments to average (noisier);
+smaller `nperseg` → smoother but coarser. The frequency axis uses the sampling
+frequency `fps` stored in the `.npz`. By default the mean is removed per segment,
+so the DC term does not dwarf the rest. If the libration frequency can be parsed
+from the run name, dashed guides are drawn at `flib` and `2·flib` (kinetic
+energy is quadratic in velocity, so it typically responds at `2·flib`).
+
+```bash
+cd /Users/jeromenoir/polybox/CODES/PIV/PIVLab/PIVlab-line-command-pythonProcessing/PIVlab_pythonProcessing
+PY=/Users/jeromenoir/anaconda3/envs/dpivsoft/bin/python
+
+# pass a run folder (uses its PostProcessing/KineticEnergy_timeSeries.npz)
+$PY psd_KineticEnergy.py .../k6_TopBottom/frot050_flib0430_dphi2deg_SS1
+
+# or point directly at the .npz
+$PY psd_KineticEnergy.py .../frot050_flib0430_dphi2deg_SS1/PostProcessing/KineticEnergy_timeSeries.npz
+
+# longer segments (finer resolution), keep the mean, linear axis, pop up the window
+$PY psd_KineticEnergy.py .../frot050_flib0430_dphi2deg_SS1 --nperseg 512 --no-detrend --linear --show
+```
+
+By default the figure is saved as `KineticEnergy_PSD.png` next to the `.npz`.
+
+Options:
+
+| Flag | Meaning |
+| --- | --- |
+| `PATH` (positional) | The run folder or the `KineticEnergy_timeSeries.npz` file. |
+| `-o`, `--output` | Output PNG path. Default: `KineticEnergy_PSD.png` beside the `.npz`. |
+| `--no-detrend` | Keep the mean (do not subtract it per segment) before the estimate. |
+| `--nperseg N` | Welch segment length in samples (default: 256, clamped to the series length). |
+| `--window WIN` | Window passed to `scipy.signal.welch` (default: `hann`). |
+| `--linear` | Use a linear power axis (default is logarithmic). |
+| `--show` | Display the figure window in addition to saving. |
+
+### 8.1 Interactive notebook
+
+[`psd_KineticEnergy.ipynb`](psd_KineticEnergy.ipynb) does the same computation and
+plot interactively, for exploring one run at a time. Open it with the `dpivsoft`
+kernel and edit the **Configuration** cell instead of passing command-line flags:
+
+```python
+PATH    = ".../k6_TopBottom/frot050_flib0430_dphi2deg_SS1"   # run folder or .npz
+DETREND = True      # remove the mean per segment (kills the DC spike)
+NPERSEG = 256       # Welch segment length in samples (clamped to series length)
+WINDOW  = "hann"    # scipy window applied to each segment
+LOGY    = True      # logarithmic power axis (False -> linear)
+SAVE    = False     # also write a PNG next to the .npz
+OUTPUT  = None      # PNG path; None -> KineticEnergy_PSD.png beside the .npz
+```
+
+Then run the cells top to bottom: the figure is shown inline, the peak frequency
+(ignoring DC) is printed next to `flib`/`2·flib`, and a PNG is written only when
+`SAVE = True`.

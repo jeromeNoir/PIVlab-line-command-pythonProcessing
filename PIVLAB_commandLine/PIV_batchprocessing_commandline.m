@@ -16,6 +16,13 @@ project_root = '/Volumes/Archives/TOPOLIB_TopBottom/k6_TopBottom';
 local_folder = '/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k6_TopBottom';
 file_pattern = '*.tif'; % for example '*.bmp', '*.tif', '*.png', '*.jpg'
 
+%% Choose what to (re)process
+% reprocess_all = 1 : process every sub-folder, overwriting existing results.
+% reprocess_all = 0 : skip any sub-folder that already has a
+%                     PIVlab_results_uncalibrated.mat in its local sub-folder,
+%                     i.e. only process folders that have not been done yet.
+reprocess_all = 0;
+
 % addpath(project_root)
 
 %% Find all sub-folders of project_root
@@ -91,6 +98,12 @@ for folder_idx = 1:numel(run_folders)
     disp(' ')
     disp(['==== Run folder ' num2str(folder_idx) ' of ' num2str(numel(run_folders)) ...
         ': ' run_folder ' ===='])
+
+    %% Skip already-processed folders (unless reprocess_all is on)
+    if ~reprocess_all && exist(file_results, 'file')
+        disp(['Already processed (found ' file_results '). Skipping.'])
+        continue
+    end
 
     %% Find the images in this run folder
     disp(['Looking for ' file_pattern ' files in: ' image_folder])
