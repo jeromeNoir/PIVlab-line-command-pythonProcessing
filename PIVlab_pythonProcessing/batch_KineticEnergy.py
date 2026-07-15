@@ -16,7 +16,8 @@ Decisions baked in (see conversation):
   - ROI           : fixed rectangle (notebook default, calibrated metres).
   - Calibration   : read from the LAST row of acquisition_log.txt --
                       dt_vel = pulse_sep (us -> s)  : displacement -> velocity
-                      fps    = cam_fps (Hz)         : PIV field timestamps t=i/fps
+                      fps    = cam_fps/2 (Hz)       : PIV field timestamps t=i/fps
+                                                      (image pairing halves cam_fps)
                     xscale = yscale = 1.2323e-4 m/px (notebook value).
                     If the log can't be read, the run stays uncalibrated
                     (scales=dt=fps=1 -> velocities in px/frame).
@@ -53,6 +54,12 @@ YSCALE = XSCALE
 # Fixed ROI, calibrated (metres): [(x0, y0), (x1, y1)] (opposite corners).
 PTS_ROI = [(0.02002585173778408, 0.13110555228124998),
            (0.19561960104659090, 0.00659505254715910)]
+
+# PIVlab pairs images (1+2, 3+4, ...), so every velocity field consumes this
+# many camera frames. The PIV field sampling frequency is therefore
+# f_piv = cam_fps / FRAMES_PER_FIELD (cam_fps in the log is the camera frame
+# rate, i.e. TWICE the rate at which PIV fields are produced).
+FRAMES_PER_FIELD = 2
 
 # If the acquisition log cannot be read, the run stays UNCALIBRATED: velocity
 # dt, PIV sampling and both spatial scales fall back to 1, so velocities are in
@@ -140,8 +147,12 @@ def read_acquisition_params(log_path):
 
     The log is tab-separated with a header; the recording row is the LAST data
     row. From it:
-      - dt_vel = pulse_sep * 1e-6  (s, image separation within a pair -> velocity)
-      - fps    = cam_fps           (Hz, PIV sampling frequency -> timestamps)
+      - dt_vel = pulse_sep * 1e-6            (s, image separation within a pair
+                                              -> velocity magnitude)
+      - fps    = cam_fps / FRAMES_PER_FIELD  (Hz, PIV field sampling frequency ->
+                                              timestamps). cam_fps is the camera
+                                              frame rate; PIV pairs images, so a
+                                              field is produced every 2 frames.
     Returns ok=False if the log / its last row cannot be read.
     """
     try:
@@ -153,7 +164,8 @@ def read_acquisition_params(log_path):
         for ln in reversed(lines[1:]):
             cols = ln.split("\t")
             try:
-                return float(cols[i_pulse]) * 1e-6, float(cols[i_fps]), True
+                return (float(cols[i_pulse]) * 1e-6,
+                        float(cols[i_fps]) / FRAMES_PER_FIELD, True)
             except (IndexError, ValueError):
                 continue
     except (OSError, ValueError):
@@ -248,7 +260,7 @@ def process_run(run_dir, reprocess=False):
         Xr, Yr, Ur, Vr = X, Y, U, V
 
     # Kinetic energy time series over the ROI. Each PIV field is time-stamped
-    # from the PIV sampling frequency (cam_fps): t[i] = i / fps.
+    # from the PIV field sampling frequency (cam_fps/2): t[i] = i / fps.
     speed2 = Ur ** 2 + Vr ** 2
     Ek_frame = 0.5 * np.nanmean(speed2.reshape(-1, nframes), axis=0)
     t = np.arange(nframes) / fps

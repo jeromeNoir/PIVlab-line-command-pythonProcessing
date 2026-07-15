@@ -27,8 +27,10 @@ For each sub-folder of `BASE_DIR` it:
 2. Reads calibration from the **last row** of `acquisition_log.txt`:
    - `dt_vel = pulse_sep` (µs → s) — image separation *within a pair*, used to
      convert displacement to velocity.
-   - `fps = cam_fps` (Hz) — PIV sampling frequency, used for the per-field
-     timestamp `t[i] = i / fps`.
+   - `fps = cam_fps / 2` (Hz) — PIV **field** sampling frequency, used for the
+     per-field timestamp `t[i] = i / fps`. PIVlab pairs images (1+2, 3+4, …), so
+     a velocity field is produced every 2 camera frames; `cam_fps` in the log is
+     the camera frame rate, twice the field rate (`FRAMES_PER_FIELD = 2`).
    - Pixel scale is fixed at `XSCALE = YSCALE = 1.2323e-4 m/px`.
    - If the log cannot be read, the run stays **uncalibrated**
      (`dt = fps = scales = 1` → velocities in px/frame) and a warning is printed.
