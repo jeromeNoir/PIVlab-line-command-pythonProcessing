@@ -42,8 +42,8 @@ LOGY   = True        # logarithmic amplitude axis (False -> linear)
 FMAX   = None        # upper frequency limit for the plot (Hz); None -> Nyquist
 SAVE   = True       # also write a PNG next to the .npz
 OUTPUT = None        # PNG path; None -> Velocity_FFT.png beside the .npz
-OVERWRITE_POL = False  # (over)write Velocity_polarization_estimators.png next to
-                       #  the .npz even if it exists (False -> keep existing)
+OVERWRITE_POL = False  # (over)write Velocity_polarization.png next to the .npz
+                       #  even if it exists (False -> keep existing)
 # -------------------------------------------------------------------------
 
 
@@ -189,36 +189,42 @@ def main():
 
     plt.show()
 
-    # --- 7. Polarization estimators ---
-    # Combined polarization estimators - identical to batch_VelocityFFT's figure.
-    # All arrays are read from the .npz (the raw U/V time series are not stored
-    # here, so nothing can be recomputed).
-    _need = ("powerVpowerU_Ratio", "powerRatio", "fftRatioV2U2")
-    if all(k in data.files for k in _need):
+    # --- 7. Polarization ---
+    # Polarization - identical to batch_VelocityFFT's figure. The arrays are read
+    # from the .npz (the raw U/V time series are not stored here, so nothing can be
+    # recomputed).
+    if "powerRatio" in data.files:
         m = f > 0
         figp, axp = plt.subplots(figsize=(9, 6))
         if frot:
             theory = 2.0 * ((2.0 * frot / f[m]) ** 2 - 1.0)
             axp.plot(f[m], theory, "k-", lw=2.2,
                      label=r"$2[(2f_{\mathrm{rot}}/f)^2-1]$  (IW)")
-        axp.plot(f[m], np.asarray(data["powerVpowerU_Ratio"], dtype=float)[m],
-                 lw=1.0, label=r"$\overline{P_V}/\overline{P_U}$")
-        axp.plot(f[m], np.asarray(data["powerRatio"], dtype=float)[m],
-                 lw=1.0, label=r"$\overline{P_V/P_U}$")
-        axp.plot(f[m], np.asarray(data["fftRatioV2U2"], dtype=float)[m],
-                 lw=1.0,
-                 label=r"$\overline{|\mathrm{FFT}(V^2)|}/\overline{|\mathrm{FFT}(U^2)|}$")
+        # powerV/powerU over the ROI: the ROI mean, plus the median with a shaded
+        # 25-75 percentile band when the batch saved the percentile arrays.
+        axp.plot(f[m], np.asarray(data["powerRatio"], dtype=float)[m], lw=1.2,
+                 label=r"mean $P_V/P_U$")
+        _pct = ("powerRatio_med", "powerRatio_p25", "powerRatio_p75")
+        if all(k in data.files for k in _pct):
+            med = np.asarray(data["powerRatio_med"], dtype=float)
+            p25 = np.asarray(data["powerRatio_p25"], dtype=float)
+            p75 = np.asarray(data["powerRatio_p75"], dtype=float)
+            line, = axp.plot(f[m], med[m], lw=1.2, label=r"median $P_V/P_U$")
+            axp.fill_between(f[m], p25[m], p75[m], color=line.get_color(),
+                             alpha=0.20, lw=0, label="ROI 25-75%")
+        else:
+            print("  (no percentile arrays in this .npz -> mean only)")
         axp.set_yscale("log")
         axp.set_xlim(0.01, 1.0)
         axp.set_xlabel("frequency (Hz)", fontsize=13)
-        axp.set_ylabel("polarization / ratio", fontsize=13)
-        axp.set_title("Polarization estimators - %s" % run, fontsize=13)
+        axp.set_ylabel(r"polarization  $P_V/P_U$", fontsize=13)
+        axp.set_title("Polarization - %s" % run, fontsize=13)
         axp.grid(True, which="both", ls=":", alpha=0.4)
         axp.legend(fontsize=9)
         figp.tight_layout()
 
         pol_png = os.path.join(os.path.dirname(npz_path),
-                               "Velocity_polarization_estimators.png")
+                               "Velocity_polarization.png")
         if OVERWRITE_POL or not os.path.isfile(pol_png):
             figp.savefig(pol_png, dpi=200, bbox_inches="tight")
             print("Polarization figure written to:\n  %s" % pol_png)
@@ -227,8 +233,8 @@ def main():
                   "overwrite):\n  %s" % pol_png)
         plt.show()
     else:
-        print("polarization estimators not in this .npz - reprocess with "
-              "batch_VelocityFFT to add them")
+        print("powerRatio not in this .npz - reprocess with batch_VelocityFFT "
+              "to add it")
 
 
 if __name__ == "__main__":

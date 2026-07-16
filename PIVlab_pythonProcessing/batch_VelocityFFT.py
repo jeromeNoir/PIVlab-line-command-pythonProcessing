@@ -32,7 +32,7 @@ Calibration is read from the **last row** of `acquisition_log.txt`
 Set the config in the next cell, then *Run All*. To test on a couple of folders
 first, list their names in `ONLY_RUNS`.
 
-**Polarization estimators.** Besides the amplitude spectra, each run now stores a set of ROI polarization estimators (all vs frequency `f`): the ROI-mean power spectra `powerU_mean`/`powerV_mean` and their ratio `powerVpowerU_Ratio`; the per-point power ratio averaged over the ROI `powerRatio` (+`powerRatio_std`); and the FFTs of `U**2`/`V**2` averaged over the ROI `fftU2_mean`/`fftV2_mean` (+stds) with their ratio `fftRatioV2U2`. A combined figure `Velocity_polarization_estimators.png` overlays them all on the inertial-wave relation `2*((2*frot/f)**2 - 1)`.
+**Polarization.** Besides the amplitude spectra, each run stores the ROI-mean power spectra `powerU_mean`/`powerV_mean` and the polarization ratio `powerRatio` = ROI mean of the per-point `powerV/powerU` (with `powerRatio_std`, `powerRatio_med`, `powerRatio_p25`, `powerRatio_p75`). The figure `Velocity_polarization.png` plots it against the inertial-wave relation `2*((2*frot/f)**2 - 1)`. The ratio is drawn both as the ROI mean and as the median with a 25-75 percentile band.
 """
 
 import os
@@ -303,19 +303,6 @@ def _power_spectrum(A, window=FFT_WINDOW, detrend=FFT_DETREND):
     return np.abs(F) ** 2
 
 
-def _rfft_mag(A, window=FFT_WINDOW, detrend=FFT_DETREND):
-    """|rfft| of each row after optional detrend + window -> (npoints, nfreq)."""
-    A = np.asarray(A, dtype=float)
-    n = A.shape[-1]
-    if detrend == "constant":
-        A = A - np.nanmean(A, axis=-1, keepdims=True)
-    if window and window != "boxcar":
-        w = get_window(window, n)
-    else:
-        w = np.ones(n)
-    return np.abs(np.fft.rfft(A * w, axis=-1))
-
-
 def averaged_fft(u_roi, v_roi, fps, window=FFT_WINDOW, detrend=FFT_DETREND):
     """ROI-averaged single-sided amplitude spectrum of U(t) and V(t).
 
@@ -354,18 +341,16 @@ def averaged_fft(u_roi, v_roi, fps, window=FFT_WINDOW, detrend=FFT_DETREND):
 
 def roi_polarization_stats(u_roi, v_roi, fps, window=FFT_WINDOW,
                            detrend=FFT_DETREND):
-    """ROI statistics of several velocity-polarization estimators.
+    """ROI statistics of the velocity-polarization ratio powerV/powerU.
 
     Definitions (per grid point, |.| = np.abs, all vs the one-sided FFT grid f):
       powerU = |FFT(U)|**2 , powerV = |FFT(V)|**2 .
     All spectra use the same detrend + window as the amplitude spectrum.
     Returns a dict with:
       powerU_mean, powerV_mean : ROI mean of powerU / powerV
-      powerVpowerU_Ratio       : powerV_mean / powerU_mean
       powerRatio, powerRatio_std: ROI mean/std of the per-point powerV/powerU
-      fftU2_mean, fftV2_mean   : ROI mean of |FFT(U**2)| / |FFT(V**2)| per point
-      fftU2_std, fftV2_std     : matching ROI std
-      fftRatioV2U2             : fftV2_mean / fftU2_mean
+      powerRatio_med           : ROI median of the per-point powerV/powerU
+      powerRatio_p25, powerRatio_p75 : ROI 25/75 percentiles of that ratio
       f, npoints
     """
     nf = u_roi.shape[-1]
@@ -377,9 +362,8 @@ def roi_polarization_stats(u_roi, v_roi, fps, window=FFT_WINDOW,
     f = np.fft.rfftfreq(nf, d=1.0 / fps)
     nanv = np.full_like(f, np.nan, dtype=float)
     out = {"f": f, "npoints": int(keep.sum())}
-    keys = ("powerU_mean", "powerV_mean", "powerVpowerU_Ratio", "powerRatio",
-            "powerRatio_std", "fftU2_mean",
-            "fftV2_mean", "fftU2_std", "fftV2_std", "fftRatioV2U2")
+    keys = ("powerU_mean", "powerV_mean", "powerRatio", "powerRatio_std",
+            "powerRatio_med", "powerRatio_p25", "powerRatio_p75")
     if not keep.any():
         for k in keys:
             out[k] = nanv.copy()
@@ -388,37 +372,27 @@ def roi_polarization_stats(u_roi, v_roi, fps, window=FFT_WINDOW,
     Uk = U[keep]
     Vk = V[keep]
 
-    # (1) power spectra |FFT|**2 per point, ROI mean, and the mean ratio.
+    # (1) power spectra |FFT|**2 per point and their ROI mean.
     pU = _power_spectrum(Uk, window, detrend)
     pV = _power_spectrum(Vk, window, detrend)
     powerU_mean = np.nanmean(pU, axis=0)
     powerV_mean = np.nanmean(pV, axis=0)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        powerVpowerU_Ratio = powerV_mean / powerU_mean
 
-    # (2) per-point power ratio powerV/powerU, then ROI mean and std.
+    # (2) per-point power ratio powerV/powerU, then ROI statistics.
     with np.errstate(divide="ignore", invalid="ignore"):
         rp = pV / pU
     rp[~np.isfinite(rp)] = np.nan
     powerRatio = np.nanmean(rp, axis=0)
     powerRatio_std = np.nanstd(rp, axis=0)
-
-    # (3) FFT of U**2 and V**2 per point, ROI mean/std, and their mean ratio.
-    FU2 = _rfft_mag(Uk ** 2, window, detrend)
-    FV2 = _rfft_mag(Vk ** 2, window, detrend)
-    fftU2_mean = np.nanmean(FU2, axis=0)
-    fftV2_mean = np.nanmean(FV2, axis=0)
-    fftU2_std = np.nanstd(FU2, axis=0)
-    fftV2_std = np.nanstd(FV2, axis=0)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        fftRatioV2U2 = fftV2_mean / fftU2_mean
+    # Median + 25-75 percentiles: a log-axis-friendly, skew-robust ROI spread.
+    powerRatio_med = np.nanmedian(rp, axis=0)
+    powerRatio_p25 = np.nanpercentile(rp, 25, axis=0)
+    powerRatio_p75 = np.nanpercentile(rp, 75, axis=0)
 
     out.update(powerU_mean=powerU_mean, powerV_mean=powerV_mean,
-               powerVpowerU_Ratio=powerVpowerU_Ratio,
                powerRatio=powerRatio, powerRatio_std=powerRatio_std,
-               fftU2_mean=fftU2_mean, fftV2_mean=fftV2_mean,
-               fftU2_std=fftU2_std, fftV2_std=fftV2_std,
-               fftRatioV2U2=fftRatioV2U2)
+               powerRatio_med=powerRatio_med, powerRatio_p25=powerRatio_p25,
+               powerRatio_p75=powerRatio_p75)
     return out
 
 
@@ -496,34 +470,12 @@ def compute_polarization(f, powerU, powerV, frot):
     return f_pol, pol_IW, pol_data
 
 
-def _save_polarization_figure(out_png, f, f_pol, pol_IW, pol_data, name):
-    """Save a per-run polarization figure next to the .npz (log y-axis).
-
-    Plots the inertial-wave prediction pol_IW vs f_pol together with the
-    measured (powerV/powerU)**2 vs f. Closed immediately.
-    """
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(f_pol, pol_IW, "k-", lw=1.5,
-            label=r"$2[(2f_{\mathrm{rot}}/f)^2-1]$  (IW)")
-    ax.plot(f, pol_data, "C0.-", lw=1.0, ms=3, label=r"$(P_V/P_U)^2$  (data)")
-    ax.set_yscale("log")            # log y-axis (non-positive values are masked)
-    ax.set_xlim(f_pol.min(), f_pol.max())
-    ax.set_xlabel("frequency (Hz)", fontsize=12)
-    ax.set_ylabel("polarization", fontsize=12)
-    ax.set_title(name, fontsize=12)
-    ax.grid(True, ls=":", alpha=0.4)
-    ax.legend(fontsize=9)
-    fig.tight_layout()
-    fig.savefig(out_png, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-
-
 def _save_polarization_v2_figure(out_png, f, pol, frot, name):
-    """Combined polarization-estimators figure next to the .npz (log y-axis).
+    """Polarization figure next to the .npz (log y-axis).
 
-    Overlays the inertial-wave relation 2*((2*frot/f)**2 - 1) with every
-    measured ratio: powerV_mean/powerU_mean, mean(powerV/powerU),
-    |FFT((V/U)**2)| and fftV2_mean/fftU2_mean. x limited to 0.01..1 Hz.
+    Overlays the inertial-wave relation 2*((2*frot/f)**2 - 1) with the measured
+    powerV/powerU ratio over the ROI, shown both as the ROI mean and as the
+    median with a shaded 25-75 percentile band. x limited to 0.01..1 Hz.
     """
     m = f > 0
     fig, ax = plt.subplots(figsize=(9, 6))
@@ -531,17 +483,20 @@ def _save_polarization_v2_figure(out_png, f, pol, frot, name):
         theory = 2.0 * ((2.0 * frot / f[m]) ** 2 - 1.0)
         ax.plot(f[m], theory, "k-", lw=2.2,
                 label=r"$2[(2f_{\mathrm{rot}}/f)^2-1]$  (IW)")
-    ax.plot(f[m], pol["powerVpowerU_Ratio"][m], lw=1.0,
-            label=r"$\overline{P_V}/\overline{P_U}$")
-    ax.plot(f[m], pol["powerRatio"][m], lw=1.0,
-            label=r"$\overline{P_V/P_U}$")
-    ax.plot(f[m], pol["fftRatioV2U2"][m], lw=1.0,
-            label=r"$\overline{|\mathrm{FFT}(V^2)|}/\overline{|\mathrm{FFT}(U^2)|}$")
+    # powerV/powerU over the ROI: both the plain ROI mean and the median with
+    # a shaded 25-75 percentile band (skew-robust, always positive -> sensible
+    # on a log axis).
+    ax.plot(f[m], pol["powerRatio"][m], lw=1.2, label=r"mean $P_V/P_U$")
+    line, = ax.plot(f[m], pol["powerRatio_med"][m], lw=1.2,
+                    label=r"median $P_V/P_U$")
+    ax.fill_between(f[m], pol["powerRatio_p25"][m], pol["powerRatio_p75"][m],
+                    color=line.get_color(), alpha=0.20, lw=0,
+                    label="ROI 25-75%")
     ax.set_yscale("log")
     ax.set_xlim(0.01, 1.0)
     ax.set_xlabel("frequency (Hz)", fontsize=12)
-    ax.set_ylabel("polarization / ratio", fontsize=12)
-    ax.set_title("Polarization estimators - %s" % name, fontsize=12)
+    ax.set_ylabel(r"polarization  $P_V/P_U$", fontsize=12)
+    ax.set_title("Polarization - %s" % name, fontsize=12)
     ax.grid(True, which="both", ls=":", alpha=0.4)
     ax.legend(fontsize=8)
     fig.tight_layout()
@@ -627,23 +582,18 @@ def process_run(run_dir, reprocess=False):
              powerU=powerU, powerV=powerV, f_peak=f_peak,
              f_pol=f_pol, pol_IW=pol_IW, polarization=pol_data,
              powerU_mean=pol["powerU_mean"], powerV_mean=pol["powerV_mean"],
-             powerVpowerU_Ratio=pol["powerVpowerU_Ratio"],
              powerRatio=pol["powerRatio"], powerRatio_std=pol["powerRatio_std"],
-             fftU2_mean=pol["fftU2_mean"], fftV2_mean=pol["fftV2_mean"],
-             fftU2_std=pol["fftU2_std"], fftV2_std=pol["fftV2_std"],
-             fftRatioV2U2=pol["fftRatioV2U2"])
+             powerRatio_med=pol["powerRatio_med"],
+             powerRatio_p25=pol["powerRatio_p25"],
+             powerRatio_p75=pol["powerRatio_p75"])
 
     # Save a spectrum figure alongside the .npz.
     fig_file = os.path.splitext(out_file)[0] + ".png"
     _save_fft_figure(fig_file, f, amp_u, amp_v, amp_total, name, ok, f_peak)
 
-    # Save a polarization figure (IW prediction vs measured power ratio).
+    # Polarization figure: IW relation + every measured ratio.
     pol_file = os.path.join(out_dir, "Velocity_polarization.png")
-    _save_polarization_figure(pol_file, f, f_pol, pol_IW, pol_data, name)
-
-    # v2: combined polarization-estimators figure.
-    pol_v2_file = os.path.join(out_dir, "Velocity_polarization_estimators.png")
-    _save_polarization_v2_figure(pol_v2_file, f, pol,
+    _save_polarization_v2_figure(pol_file, f, pol,
                                  parse_run_name(name)[0], name)
 
     print("  [ok] %-40s nframes=%d fps=%.4gHz npts=%d  f_peak=%.4gHz"
