@@ -48,7 +48,7 @@ from matplotlib.colors import LogNorm
 
 # --- Configuration --------------------------------------------------------- #
 BASE_DIR = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
-            "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k6_TopBottom")
+            "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_bottomOnly")
 
 PIV_FILENAME = "PIVlab_results_uncalibrated.mat"
 LOG_FILENAME = "acquisition_log.txt"
@@ -119,11 +119,11 @@ PLOT_CMAP = "viridis"
 # --- "x = dphi" colormap (at fixed f_lib) ---------------------------------- #
 # Libration frequency (Hz) to hold fixed for the dphi colormap. None -> the
 # first flib found in VelocityFFT_summary; the run cell prints the full list.
-PLOT_FIX_FLIB = 1.5
+PLOT_FIX_FLIB = 1.0
 
 # For the "x = f_lib" colormap: which dphi (deg) to hold fixed. None -> the
 # first dphi found in the summary; the run cell prints the full list.
-PLOT_FIX_DPHI = None
+PLOT_FIX_DPHI = 2
 
 
 def load_piv(file_path):
@@ -934,6 +934,18 @@ def plot_colormap_dphi(base_dir, flib_hz=PLOT_FIX_FLIB, component=None,
                  r"($f_{\mathrm{lib}} = %.4g$ Hz)" % (comp_lbl, flib_hz),
                  fontsize=14)
 
+    # Line f/f_rot = f_lib/f_rot. f_lib is fixed here, so it is horizontal.
+    frot_med = float(np.nanmedian(sel["frot_Hz"].astype(float)))
+    if np.isfinite(frot_med) and frot_med:
+        y_line = (flib_hz / frot_med if NORMALIZE_FREQ_BY_FROT else flib_hz)
+        if y_edges[0] <= y_line <= y_edges[-1]:
+            ax.axhline(y_line, ls="--", color="w", lw=1.3, zorder=6,
+                       label=(r"$f/f_{\mathrm{rot}} = f^*$"
+                              if NORMALIZE_FREQ_BY_FROT
+                              else r"$f = f_{\mathrm{lib}}$"))
+            ax.legend(loc="upper left", fontsize=11, framealpha=0.3,
+                      labelcolor="w")
+
     # Mark the dphi positions along the top.
     ax.scatter(dphis, np.full_like(dphis, grid[-1]), marker="v", s=18,
                color="w", edgecolor="k", linewidth=0.4, clip_on=False, zorder=5)
@@ -1039,6 +1051,19 @@ def plot_colormap_flib(base_dir, dphi_deg=PLOT_FIX_DPHI, component=None,
     ax.set_title(r"ROI-averaged %s amplitude vs. $f_{\mathrm{lib}}$   "
                  r"($\delta\phi = %.4g$ deg)" % (comp_lbl, dphi_deg),
                  fontsize=14)
+    # Line f/f_rot = f_lib/f_rot: with f_lib on x this is y = x / f_rot.
+    frot_med = float(np.nanmedian(sel["frot_Hz"].astype(float)))
+    if np.isfinite(frot_med) and frot_med:
+        xs = np.array([x_edges[0], x_edges[-1]], dtype=float)
+        ys = xs / frot_med if NORMALIZE_FREQ_BY_FROT else xs
+        ax.plot(xs, ys, ls="--", color="w", lw=1.3, zorder=6,
+                label=(r"$f/f_{\mathrm{rot}} = f^*$" if NORMALIZE_FREQ_BY_FROT
+                       else r"$f = f_{\mathrm{lib}}$"))
+        ax.set_xlim(x_edges[0], x_edges[-1])   # keep the pcolormesh limits
+        ax.set_ylim(y_edges[0], y_edges[-1])
+        ax.legend(loc="upper left", fontsize=11, framealpha=0.3,
+                  labelcolor="w")
+
     ax.scatter(flibs, np.full_like(flibs, grid[-1]), marker="v", s=18,
                color="w", edgecolor="k", linewidth=0.4, clip_on=False, zorder=5)
     fig.tight_layout()
