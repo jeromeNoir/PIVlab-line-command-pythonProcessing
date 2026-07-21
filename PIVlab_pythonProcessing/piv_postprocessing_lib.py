@@ -18,7 +18,7 @@ Layout
 
 Importing
 ---------
-The tools live next to this file, so a plain `import piv_common` resolves:
+The tools live next to this file, so a plain `import piv_postprocessing_lib` resolves:
 Python puts a script's own directory on sys.path, and Jupyter runs a notebook
 with its folder as the working directory. Run a notebook from somewhere else and
 the import will fail -- start it from this folder.
@@ -353,21 +353,6 @@ def read_VelocityFFT(filepath):
     a dict {name: value}, and prints the list of what it found.
     """
     return _load_npz(filepath, "VelocityFFT")
-
-
-def write_xlsx(df, path):
-    """Write a summary DataFrame to .xlsx with boolean columns stringified.
-
-    Some pandas/openpyxl versions write numpy-bool cells as blank, so columns
-    like 'processed' / 'calibrated' / 'kept' come out empty in the .xlsx while
-    the .csv is fine. Converting booleans to their 'True'/'False' text first
-    keeps those columns populated and matching the .csv.
-    """
-    out = df.copy()
-    for col in out.columns:
-        if out[col].dtype == bool:
-            out[col] = out[col].astype(str)
-    out.to_excel(path, index=False)
 
 
 # --------------------------------------------------------------------------- #
