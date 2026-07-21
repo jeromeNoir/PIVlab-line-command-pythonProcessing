@@ -8,6 +8,8 @@
 % 4) postprocess the vector field
 % 5) save results and a figure into a mirrored sub-folder under local_folder
 
+% modified by J.Noir
+
 
 
 %% Tell MATLAB where the images and the results should live
