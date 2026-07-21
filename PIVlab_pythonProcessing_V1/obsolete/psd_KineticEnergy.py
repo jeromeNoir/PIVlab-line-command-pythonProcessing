@@ -1,26 +1,31 @@
 #!/usr/bin/env python
 """
-FFT of a kinetic-energy time series produced by batch_KineticEnergy.py.
+Power spectral density (PSD) of a kinetic-energy time series produced by
+batch_KineticEnergy.py.
 
 Reads a per-run KineticEnergy_timeSeries.npz (containing `t`, `Ek_frame` and
-the PIV sampling frequency `fps`), computes the FFT of Ek(t), and draws two
-panels:
+the PIV sampling frequency `fps`), estimates the PSD of Ek(t) with Welch's
+method (scipy.signal.welch), and draws two panels:
 
   1. the kinetic-energy time series Ek(t);
-  2. the amplitude spectrum |FFT| versus frequency.
+  2. its PSD versus frequency.
 
-By default the mean is removed before the FFT (the DC term otherwise dwarfs
-everything); pass --no-detrend to keep it. The frequency axis uses the PIV
-sampling frequency fps stored in the file. If the libration frequency can be
-parsed from the run name, dashed guides are drawn at flib and 2*flib (kinetic
-energy is quadratic in velocity, so it typically responds at 2*flib).
+Welch averages the periodograms of overlapping windowed segments, trading
+frequency resolution for a smoother, lower-variance estimate than the raw
+periodogram (see periodogram_KineticEnergy.py). By default the mean is removed
+per segment (the DC term otherwise dwarfs everything); pass --no-detrend to keep
+it. The frequency axis uses the PIV sampling frequency fps stored in the file.
+If the libration frequency can be parsed from the run name, dashed guides are
+drawn at flib and 2*flib (kinetic energy is quadratic in velocity, so it
+typically responds at 2*flib).
 
 Usage:
-    python fft_KineticEnergy.py PATH [-o OUT.png] [--no-detrend] [--linear] [--show]
+    python psd_KineticEnergy.py PATH [-o OUT.png] [--no-detrend]
+        [--nperseg N] [--window WIN] [--linear] [--show]
 
 PATH may be the .npz file itself or a run folder (its PostProcessing/
 KineticEnergy_timeSeries.npz is used).
-Run with an env that has numpy / matplotlib (e.g. dpivsoft).
+Run with an env that has numpy / scipy / matplotlib (e.g. dpivsoft).
 """
 
 import os
@@ -28,6 +33,7 @@ import re
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.signal import welch
 
 NPZ_NAME = "KineticEnergy_timeSeries.npz"
 FLIB_DIVISOR = 1000.0   # folder token 'flib0400' -> 0.400 Hz (matches batch)
@@ -54,30 +60,27 @@ def parse_flib(run_name):
     return float(m.group(1)) / FLIB_DIVISOR if m else None
 
 
-def compute_fft(ek, fps, detrend=True):
-    """Return (freq, amp, fft) for the positive-frequency half of Ek(t).
+def compute_psd(ek, fps, detrend=True, nperseg=256, window="hann"):
+    """Return (freq, pxx) for the Welch PSD estimate of Ek(t).
 
-    `fft` is the complex one-sided spectrum from numpy.fft.rfft and `amp` is
-    its normalised amplitude (|FFT| * 2 / N, so a pure tone reads as its
-    physical amplitude; the DC bin keeps the 1/N scaling).
+    Thin wrapper around scipy.signal.welch: it averages the periodograms of
+    overlapping windowed segments (length `nperseg`, 50% overlap by default)
+    for a smoother, lower-variance one-sided PSD than the raw periodogram.
+    Units are (Ek units)^2 / Hz. `nperseg` is clamped to the series length.
     """
     ek = np.asarray(ek, dtype=float)
     # Fill any NaNs (e.g. fully-masked frames) with the series mean.
     if np.any(np.isnan(ek)):
         ek = np.where(np.isnan(ek), np.nanmean(ek), ek)
-    if detrend:
-        ek = ek - ek.mean()
-    n = ek.size
-    fft = np.fft.rfft(ek)
-    freq = np.fft.rfftfreq(n, d=1.0 / fps)
-    amp = np.abs(fft) * 2.0 / n
-    amp[0] = np.abs(fft[0]) / n            # DC term is not doubled
-    if n % 2 == 0:
-        amp[-1] = np.abs(fft[-1]) / n      # Nyquist term is not doubled either
-    return freq, amp, fft
+    nperseg = min(int(nperseg), ek.size)
+    freq, pxx = welch(
+        ek, fs=fps, window=window, nperseg=nperseg,
+        detrend=("constant" if detrend else False),
+        scaling="density", return_onesided=True)
+    return freq, pxx
 
 
-def plot(npz_path, output, detrend=True, logy=True):
+def plot(npz_path, output, detrend=True, nperseg=256, window="hann", logy=True):
     data = np.load(npz_path, allow_pickle=True)
     t = data["t"]
     ek = data["Ek_frame"]
@@ -85,7 +88,8 @@ def plot(npz_path, output, detrend=True, logy=True):
     run = str(data["run"]) if "run" in data.files else os.path.basename(
         os.path.dirname(npz_path))
 
-    freq, amp, _ = compute_fft(ek, fps, detrend=detrend)
+    freq, pxx = compute_psd(ek, fps, detrend=detrend, nperseg=nperseg,
+                            window=window)
     flib = parse_flib(run)
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
@@ -97,14 +101,14 @@ def plot(npz_path, output, detrend=True, logy=True):
     axes[0].set_title("Kinetic energy time series", fontsize=14)
     axes[0].grid(True, alpha=0.3)
 
-    # Panel 2: amplitude spectrum
+    # Panel 2: PSD (Welch)
     if logy:
-        axes[1].semilogy(freq, amp, color="C1", lw=1)
+        axes[1].semilogy(freq, pxx, color="C1", lw=1)
     else:
-        axes[1].plot(freq, amp, color="C1", lw=1)
+        axes[1].plot(freq, pxx, color="C1", lw=1)
     axes[1].set_xlabel("frequency (Hz)", fontsize=13)
-    axes[1].set_ylabel(r"$|\widehat{E_k}|$  (m$^2$/s$^2$)", fontsize=13)
-    ttl = "FFT amplitude spectrum" + ("  (mean removed)" if detrend else "")
+    axes[1].set_ylabel(r"PSD  (m$^4$/s$^4$/Hz)", fontsize=13)
+    ttl = "Welch PSD" + ("  (mean removed)" if detrend else "")
     axes[1].set_title(ttl, fontsize=14)
     axes[1].grid(True, alpha=0.3, which="both")
     if flib:
@@ -132,19 +136,25 @@ def main():
     parser.add_argument("-o", "--output", default=None,
                         help="Output PNG path (default: next to the .npz).")
     parser.add_argument("--no-detrend", dest="detrend", action="store_false",
-                        help="Keep the mean (do not subtract) before the FFT.")
+                        help="Keep the mean (do not subtract) before the estimate.")
+    parser.add_argument("--nperseg", type=int, default=256,
+                        help="Welch segment length in samples (default: 256; "
+                             "clamped to the series length).")
+    parser.add_argument("--window", default="hann",
+                        help="Window passed to scipy.signal.welch (default: hann).")
     parser.add_argument("--linear", dest="logy", action="store_false",
-                        help="Use a linear amplitude axis (default is log).")
+                        help="Use a linear power axis (default is log).")
     parser.add_argument("--show", action="store_true",
                         help="Display the figure window in addition to saving.")
     args = parser.parse_args()
 
     npz_path = resolve_npz(args.path)
     output = args.output or os.path.join(
-        os.path.dirname(npz_path), "KineticEnergy_FFT.png")
+        os.path.dirname(npz_path), "KineticEnergy_PSD.png")
 
     print("Reading %s" % npz_path)
-    plot(npz_path, output, detrend=args.detrend, logy=args.logy)
+    plot(npz_path, output, detrend=args.detrend, nperseg=args.nperseg,
+         window=args.window, logy=args.logy)
 
     if args.show:
         plt.show()

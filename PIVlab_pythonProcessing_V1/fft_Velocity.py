@@ -37,7 +37,7 @@ FROT_DIVISOR = 100.0    # folder token 'frot050'  -> 0.50  Hz (matches batch)
 # --- edit me -------------------------------------------------------------
 PATH   = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k6_TopBottom/"
-          "frot050_flib1500_dphi8deg_SS1/PostProcessing")   # run folder or .npz
+          "frot0.50Hz_flib1.500Hz_dphi8deg_SS1/PostProcessing")   # run folder or .npz
 LOGY   = True        # logarithmic amplitude axis (False -> linear)
 FMAX   = None        # upper frequency limit for the plot (Hz); None -> Nyquist
 SAVE   = True       # also write a PNG next to the .npz
@@ -64,8 +64,17 @@ def resolve_npz(path):
 
 
 def parse_flib(run_name):
-    """Libration frequency (Hz) from a run name, or None."""
-    m = re.search(r"flib(\d+)", str(run_name))
+    """Libration frequency (Hz) from a run name, or None.
+
+    Accepts the current 'flib0.400Hz' and the legacy 'flib0400' (also 0.4 Hz). The
+    Hz form must be tried first: the legacy pattern would read 'flib0.400Hz' as
+    'flib0' -> 0.0.
+    """
+    name = str(run_name)
+    m = re.search(r"flib([\d.]+)Hz", name)
+    if m:
+        return float(m.group(1))
+    m = re.search(r"flib(\d+)", name)
     return float(m.group(1)) / FLIB_DIVISOR if m else None
 
 
@@ -78,8 +87,17 @@ def peak_freq(f, amp):
 
 
 def parse_frot(run_name):
-    """Rotation frequency (Hz) from a run name, or None."""
-    m = re.search(r"frot(\d+)", str(run_name))
+    """Rotation frequency (Hz) from a run name, or None.
+
+    Accepts the current 'frot0.50Hz' and the legacy 'frot050' (also 0.5 Hz). The
+    Hz form must be tried first: the legacy pattern would read 'frot0.50Hz' as
+    'frot0' -> 0.0.
+    """
+    name = str(run_name)
+    m = re.search(r"frot([\d.]+)Hz", name)
+    if m:
+        return float(m.group(1))
+    m = re.search(r"frot(\d+)", name)
     return float(m.group(1)) / FROT_DIVISOR if m else None
 
 

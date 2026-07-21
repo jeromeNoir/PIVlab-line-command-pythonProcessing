@@ -173,17 +173,34 @@ def read_acquisition_params(log_path):
     return UNCAL_DT, UNCAL_FPS, False
 
 
+def parse_freq_token(name, tag, divisor):
+    """Frequency [Hz] carried by a folder-name token.
+
+    The current naming states the value in Hz: 'frot0.50Hz' -> 0.5. The legacy
+    naming used a zero-padded integer: 'frot050' -> 050/divisor -> 0.5. The Hz
+    form is tried first, and the legacy form is still accepted so that older
+    summary tables (which store the old run names) keep parsing.
+
+    NaN if the token is absent. Note the legacy pattern would misread an Hz name
+    ('frot0.50Hz' -> 'frot0' -> 0.0), which is why order matters here.
+    """
+    m = re.search(r"%s([\d.]+)Hz" % tag, name)
+    if m:
+        return float(m.group(1))
+    m = re.search(r"%s(\d+)" % tag, name)
+    return float(m.group(1)) / divisor if m else np.nan
+
+
 def parse_run_name(name):
     """Parse frot/flib (Hz) and dphi (deg) from a folder name.
 
-    e.g. 'frot050_flib0400_dphi2.5deg_SS1' -> (0.5, 0.4, 2.5).
+    e.g. 'frot0.50Hz_flib0.400Hz_dphi2.5deg_SS1' -> (0.5, 0.4, 2.5), and the legacy
+    'frot050_flib0400_dphi2.5deg_SS1' gives the same.
     Missing tokens come back as NaN.
     """
-    frot = re.search(r"frot(\d+)", name)
-    flib = re.search(r"flib(\d+)", name)
+    frot_hz = parse_freq_token(name, "frot", FROT_DIVISOR)
+    flib_hz = parse_freq_token(name, "flib", FLIB_DIVISOR)
     dphi = re.search(r"dphi([\d.]+)deg", name)
-    frot_hz = float(frot.group(1)) / FROT_DIVISOR if frot else np.nan
-    flib_hz = float(flib.group(1)) / FLIB_DIVISOR if flib else np.nan
     dphi_deg = float(dphi.group(1)) if dphi else np.nan
     return frot_hz, flib_hz, dphi_deg
 
