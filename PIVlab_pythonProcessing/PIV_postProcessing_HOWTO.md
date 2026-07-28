@@ -145,6 +145,7 @@ or `'FULL'`. The single-run / plotting tools pick one region locally.
 | `batch_Velocity.ipynb` | Per-point FFT of U(t), V(t), ROI-averaged amplitude spectra, polarization, dimensionless numbers. Per-run `.npz`, spectrum + polarization figures, summary, and dataset colormaps. |
 | `single_KineticEnergy.ipynb` | Runs `batch_KineticEnergy`'s per-run step for **one** run — **identical** combined `.npz`, two-panel figure and summary row to what the batch writes for that run; optionally appends the row to the single `KineticEnergy_summary`. (The former `single_KineticEnergyFFT` viewer is folded in — both spectra are computed and drawn here.) |
 | `single_Velocity.ipynb` | Viewer: reads one `VelocityFFT` `.npz`, redraws the velocity spectrum + polarization, prints peaks and dimensionless numbers. |
+| `reprocess_single_Velocity.ipynb` | Runs `batch_Velocity`'s per-run step for **one** run **from the `.mat`** (not the `.npz`) — identical `.npz`, figures and summary row to the batch; `OVERWRITE_FIG` / `UPDATE_SUMMARY` switches. |
 | `plot_resonance_summary.ipynb` | Overlays one or more `KineticEnergy_summary` `.csv` (one marker/colour per file, legend shows `k0`/dphi/`f_rot`/topography) as the resonance figure vs `f*`, with `SELECT_*` filtering (value / list / `(lo,hi)` range). Also builds, from each sibling `VelocityFFT_summary`, two peak-amplitude-vs-`f_lib` figures (normalized ∣ raw): one for `f_lib`, one for `f_low` & `f_lib∓f_low`. Figures named `*overlay*` are saved in the dataset root. |
 | `filter_velocity_bandpass.ipynb` | Zero-phase Butterworth band-pass of U/V between two cut-offs; writes a new **uncalibrated** `.mat`. |
 | `PIV_subset_analysis_singleExperiment.ipynb` | One run over a user time window: quiver movie (`.mp4`), `⟨Ek⟩(t)` + FFT figure, `.npz`. |
@@ -398,6 +399,17 @@ spectrum (total only, diamonds on the curve) and the polarization figure, prints
 the peak frequencies, `f_low` significance test, and dimensionless numbers.
 `OVERWRITE_FIG` guards the spectrum figures; `UPDATE_SUMMARY` optionally pushes
 this run's row into `VelocityFFT_summary_<region>.csv`.
+
+### `reprocess_single_Velocity.ipynb` / `.py`
+
+Runs `batch_Velocity`'s per-run step for **one** run, starting from the PIV
+`.mat` (not the cached `.npz`). It reuses the batch's helper, figure and
+`build_row` functions verbatim, so the outputs are **identical** to what the
+batch writes for that run: the same `VelocityFFT_<region>.npz`, pixel-identical
+spectrum and polarization figures, and the same summary row (with the `kept`
+de-duplication). The `.npz` is always rewritten; `OVERWRITE_FIG` guards the
+figure files and `UPDATE_SUMMARY` the summary row. Use `single_Velocity` when you
+only need to redraw from an existing `.npz`.
 
 ### `plot_resonance_summary.ipynb` / `.py`
 

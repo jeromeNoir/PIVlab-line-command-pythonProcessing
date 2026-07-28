@@ -23,7 +23,9 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 # | Velocity FFT — ROI        | `VelocityFFT_ROI.png` |
 # 
 # Each sheet is written **next to that dataset's summary tables** (the dataset root), named
-# `Thumbnails_<figure>.png`.
+# `Thumbnails_<figure>.pdf` — a **multi-page PDF with true A4 pages** (210 x 297 mm). As many
+# tiles as fit are placed on each page and the run list continues onto the next page; the tile
+# size is identical on every page.
 # 
 # Tiles are ordered physically — by `frot`, then `flib`, then `dphi` (parsed from the run name) — not
 # alphabetically, so a resonance sweep reads left-to-right in frequency order. Each tile is captioned
@@ -39,6 +41,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+from matplotlib.backends.backend_pdf import PdfPages
 
 
 from piv_postprocessing_lib import k0, parse_run_name, topography_arrangement
@@ -95,14 +98,17 @@ EXCLUDE = ['From Jerome']
 
 # Sheet name = OUT_PREFIX + <stem> + ('_normalized' if SOURCE_NORMALIZED) + OUT_EXT
 OUT_PREFIX = 'Thumbnails_'
-OUT_EXT    = '.pdf'          # sheet container; the tiles themselves are images
+OUT_EXT    = '.pdf'          # multi-page A4 container -- must be '.pdf'
 
 # --- page geometry ----------------------------------------------------
-# The sheet is as wide as an A4 page; each tile is TILE_FRAC of that width, so
-# 1/TILE_FRAC tiles fit per row. The page grows downwards to fit all the runs
-# (A4 width, continuous length).
-A4_W_IN   = 210.0 / 25.4     # 8.268 in
-PAGE_W    = A4_W_IN
+# Real A4 pages (210 x 297 mm). Tiles are laid out NCOLS per row, each
+# TILE_FRAC of the page width; as many rows as fit on one page are used and the
+# run list is split over as many pages as needed -> ONE MULTI-PAGE PDF.
+A4_W_IN = 210.0 / 25.4       # 8.268 in
+A4_H_IN = 297.0 / 25.4       # 11.693 in
+PAGE_ORIENTATION = 'portrait'    # 'portrait' or 'landscape'
+PAGE_W, PAGE_H = ((A4_W_IN, A4_H_IN) if PAGE_ORIENTATION == 'portrait'
+                  else (A4_H_IN, A4_W_IN))
 TILE_FRAC = 0.4              # tile width as a fraction of the page width
 NCOLS     = 2                # tiles per row (2 x 0.4 = 0.8 of the page)
 DPI       = 200              # resolution the tile images are rendered at
@@ -221,49 +227,76 @@ def _read(path, target_px=None):
     return img
 
 
-def contact_sheet(items, title, out_path, ncols=NCOLS):
-    """Tile the images in `items` onto one A4-wide page and save it.
+def page_layout(first_path, ncols=NCOLS):
+    """Tile size and how many rows/tiles fit on one A4 page.
 
-    items is [(caption, image_path)]. The page is PAGE_W wide and grows
-    downwards; each tile is exactly TILE_FRAC*PAGE_W wide, with its height set by
-    the source aspect ratio so the figures are never distorted.
+    Returns (tile_w, cell_h, nrows, per_page, left, top, bottom) in inches /
+    figure fractions. The tile keeps the source aspect ratio; if a single tile
+    would be taller than the printable area it is scaled down to fit.
     """
-    n = len(items)
-    nrows = int(np.ceil(n / float(ncols)))
-
     tile_w = tile_w_in()
-    h, w = _read(items[0][1]).shape[:2]
+    h, w = _read(first_path).shape[:2]
     cell_h = tile_w * h / float(w)
 
-    # --- page geometry, in inches, then converted to figure fractions -------
-    header_in, bottom_in = 0.55, 0.20
-    block_h = nrows * cell_h + (nrows - 1) * HSPACE * cell_h
-    fig_h = header_in + block_h + bottom_in
+    header_in, bottom_in = 0.85, 0.30
+    avail = PAGE_H - header_in - bottom_in
+    if cell_h > avail:                      # one tile taller than the page
+        tile_w = tile_w * avail / cell_h
+        cell_h = avail
+
+    # rows that fit:  cell_h * (n + (n-1)*HSPACE) <= avail
+    nrows = int(np.floor((avail / cell_h + HSPACE) / (1.0 + HSPACE)))
+    nrows = max(1, nrows)
+    per_page = ncols * nrows
 
     content_w = ncols * tile_w + (ncols - 1) * WSPACE * tile_w
     left = (PAGE_W - content_w) / 2.0 / PAGE_W
+    block_h = cell_h * (nrows + (nrows - 1) * HSPACE)
+    top = 1.0 - header_in / PAGE_H
+    bottom = top - block_h / PAGE_H
+    return tile_w, cell_h, nrows, per_page, left, top, bottom, header_in
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(PAGE_W, fig_h))
-    axes = np.atleast_1d(axes).ravel()
-    fig.subplots_adjust(left=left, right=1.0 - left,
-                        top=1.0 - header_in / fig_h, bottom=bottom_in / fig_h,
-                        wspace=WSPACE, hspace=HSPACE)
 
-    for ax, (caption, path) in zip(axes, items):
-        ax.imshow(_read(path), interpolation='antialiased')
-        ax.set_title(caption, fontsize=TITLE_FS)
-        ax.axis('off')
-    for ax in axes[n:]:                     # blank out the unused cells
-        ax.axis('off')
+def contact_sheet(items, title, out_path, ncols=NCOLS):
+    """Tile `items` onto A4 pages and write them as ONE multi-page PDF.
 
+    items is [(caption, image_path)]. Every page is exactly A4 (PAGE_W x PAGE_H);
+    each tile is TILE_FRAC*PAGE_W wide with its height set by the source aspect
+    ratio, so figures are never distorted and the tile size is identical on every
+    page. Returns (figs, npages, nrows, per_page).
+    """
+    n = len(items)
+    (tile_w, cell_h, nrows, per_page,
+     left, top, bottom, header_in) = page_layout(items[0][1], ncols)
+    npages = int(np.ceil(n / float(per_page)))
     _tt, _bt = topography_arrangement(title)
-    fig.suptitle('%s   (%d runs)   ($k_0 = %g$, top=%s, bottom=%s)'
-                 % (title, n, k0, _tt, _bt),
-                 fontsize=11, fontweight='bold',
-                 y=1.0 - 0.35 * header_in / fig_h)
-    # No bbox_inches='tight' -- that would crop the page and lose the A4 width.
-    fig.savefig(out_path, dpi=DPI)
-    return fig
+
+    figs = []
+    with PdfPages(out_path) as pdf:
+        for pg in range(npages):
+            chunk = items[pg * per_page:(pg + 1) * per_page]
+            fig, axes = plt.subplots(nrows, ncols, figsize=(PAGE_W, PAGE_H))
+            axes = np.atleast_1d(axes).ravel()
+            fig.subplots_adjust(left=left, right=1.0 - left, top=top,
+                                bottom=bottom, wspace=WSPACE, hspace=HSPACE)
+            for ax, (caption, path) in zip(axes, chunk):
+                ax.imshow(_read(path), interpolation='antialiased')
+                ax.set_title(caption, fontsize=TITLE_FS)
+                ax.axis('off')
+            for ax in axes[len(chunk):]:        # blank out the unused cells
+                ax.axis('off')
+
+            # Two lines, sized to fit the A4 width (a single line overflows).
+            fig.suptitle('%s\n(%d runs)   ($k_0 = %g$, top=%s, bottom=%s)'
+                         % (title, n, k0, _tt, _bt),
+                         fontsize=9, fontweight='bold',
+                         y=1.0 - 0.22 * header_in / PAGE_H)
+            fig.text(0.5, 0.012, 'page %d / %d' % (pg + 1, npages),
+                     ha='center', va='bottom', fontsize=7)
+            # No bbox_inches='tight' -- that would crop the exact A4 page size.
+            pdf.savefig(fig, dpi=DPI)
+            figs.append(fig)
+    return figs, npages, nrows, per_page
 
 
 # ## 3. Build the sheets
@@ -276,8 +309,11 @@ written, skipped = [], []
 _suffix  = '_normalized' if SOURCE_NORMALIZED else ''
 _ext     = SOURCE_EXT.lower().lstrip('.')
 _variant = 'normalized' if SOURCE_NORMALIZED else 'raw'
-print('source: %s figures, %s  |  page %.2f in, tile %.0f px @ %d dpi, %d/row'
-      % (_ext.upper(), _variant, PAGE_W, tile_px(), DPI, NCOLS))
+print('source: %s figures, %s  |  A4 %s page %.2f x %.2f in, tile %.0f px @ %d dpi, %d/row'
+      % (_ext.upper(), _variant, PAGE_ORIENTATION, PAGE_W, PAGE_H, tile_px(),
+         DPI, NCOLS))
+if OUT_EXT.lower() != '.pdf':
+    print('[warn] multi-page output needs OUT_EXT = ".pdf" (got %r)' % OUT_EXT)
 
 # PDF sources must be rasterized to be tiled; stop early with a clear message if
 # that is requested but no backend is installed.
@@ -310,16 +346,19 @@ else:
 
             ttl = '%s  --  %s%s' % (label, title,
                                     '  (normalized)' if SOURCE_NORMALIZED else '')
-            fig = contact_sheet(items, ttl, out_path)
+            figs, npages, nrows, per_page = contact_sheet(items, ttl, out_path)
             src_w = _read(items[0][1]).shape[1]
-            print('  [ok]   %-30s %2d tiles | source %4d px -> %3.0f px tile | %s'
-                  % (stem, len(items), src_w, tile_px(), os.path.basename(out_path)))
+            print('  [ok]   %-30s %2d tiles | %d page(s) A4 (%dx%d/page) | '
+                  'source %4d px -> %3.0f px tile | %s'
+                  % (stem, len(items), npages, nrows, NCOLS, src_w, tile_px(),
+                     os.path.basename(out_path)))
             written.append(out_path)
 
-            if SHOW_INLINE:
-                plt.show()
-            else:
-                plt.close(fig)
+            for _f in figs:
+                if SHOW_INLINE:
+                    plt.show()
+                else:
+                    plt.close(_f)
 
 print('\n%d sheet(s) written, %d skipped' % (len(written), len(skipped)))
 for p in written:
@@ -335,8 +374,8 @@ if skipped:
 # Re-displays the sheets that were just written, at screen resolution.
 
 
-# The sheets are PDFs, so they cannot be read back with imread. Set
-# SHOW_INLINE = True above to display each sheet as it is built, or open the
-# files below (they are A4-wide, one continuous page per figure type).
+# The sheets are multi-page A4 PDFs, so they cannot be read back with imread.
+# Set SHOW_INLINE = True above to display every page as it is built, or open the
+# files below (each page is exactly A4).
 for p in written:
     print('%6.1f MB   %s' % (os.path.getsize(p) / 1e6, p))
