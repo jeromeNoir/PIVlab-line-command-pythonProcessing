@@ -1,4 +1,4 @@
-"""Auto-generated .py twin of single_KineticEnergy.ipynb -- do not edit by hand.
+"""Auto-generated .py twin of reprocess_single_KineticEnergy.ipynb -- do not edit by hand.
 
 Figures are SAVED, not shown. Regenerate with `python ipynb_to_py.py` after
 editing the notebook.
@@ -8,23 +8,26 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 
 
 
-# # Kinetic energy of a single PIV run
+# # Reprocess a single run -- kinetic energy (from the `.mat`)
 # 
-# Single-run version of `batch_KineticEnergy`: it runs **exactly** the batch's
-# per-run step for one `PATH`, so the outputs are identical to what the batch would
-# write for that run. In one pass it reads the PIV `.mat`, computes the ROI/FULL
-# kinetic-energy time series `⟨Ek⟩(t)` **and** both FFT spectra of `Ek`
-# (`FFT(⟨Ek⟩)` = average-then-FFT, `⟨FFT(Ek)⟩` = FFT-then-average), then writes:
+# Runs **exactly** `batch_KineticEnergy`'s per-run step for one `PATH`, so the
+# outputs are identical to what the batch would write for that run. In one pass it
+# reads the PIV `.mat`, computes the ROI/FULL kinetic-energy time series `⟨Ek⟩(t)`
+# **and** both FFT spectra of `Ek` (`FFT(⟨Ek⟩)` = average-then-FFT, `⟨FFT(Ek)⟩` =
+# FFT-then-average), then writes:
 # 
-# - `PostProcessing/KineticEnergy_<region>.npz` — time series + both spectra;
-# - `PostProcessing/KineticEnergy_FFT_<region>[_normalized].<fmt>` — the two-panel
+# - `PostProcessing/KineticEnergy_<region>.npz` -- time series + both spectra;
+# - `PostProcessing/KineticEnergy_FFT_<region>[_normalized].<fmt>` -- the two-panel
 #   figure (both spectra drawn);
-# - one row in `KineticEnergy_summary_<region>.csv` (when `UPDATE_SUMMARY`) — the
-#   time-series stats plus the `⟨FFT(Ek)⟩` quantities (peak + amplitudes at `f_lib`
-#   and `2·f_lib`). Only `⟨FFT(Ek)⟩` is tabled.
+# - one row in `KineticEnergy_summary_<region>.csv` -- the time-series stats plus
+#   the `⟨FFT(Ek)⟩` quantities (peak + amplitudes at `f_lib` and `2·f_lib`). Only
+#   `⟨FFT(Ek)⟩` is tabled.
 # 
-# Calibration is read from the run's `acquisition_log.txt`; all constants come from
-# the dataset's `param_postProcessing.json` (same as the batch).
+# Switches: `REPROCESS` re-reads the `.mat` and overwrites the `.npz`/figures (with
+# `REPROCESS = False`, an existing `.npz` is reused, exactly like the batch's skip
+# path); `UPDATE_SUMMARY` adds/refreshes this run's summary row. Calibration is read
+# from the run's `acquisition_log.txt`; all constants come from the dataset's
+# `param_postProcessing.json`.
 
 
 # ## 1. Imports

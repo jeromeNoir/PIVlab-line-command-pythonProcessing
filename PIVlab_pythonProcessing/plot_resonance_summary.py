@@ -11,7 +11,7 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 # # Resonance & peak-amplitude summary
 # 
 # Overlays one or more `KineticEnergy_summary_<region>.csv` tables (written by
-# `batch_KineticEnergy` / `single_KineticEnergy`, which now hold the kinetic-energy
+# `batch_KineticEnergy` / `reprocess_single_KineticEnergy`, which now hold the kinetic-energy
 # statistics **and** the `<FFT(Ek)>` spectral amplitudes in one file) and their
 # sibling `VelocityFFT_summary_<region>.csv`. **Each summary file is drawn with its
 # own marker and colour**, so several datasets / regions / `k0` can be compared at
@@ -79,7 +79,7 @@ from piv_postprocessing_lib import (topography_arrangement, figure_filename, lib
 import builtins
 if not hasattr(builtins, "_piv_real_print"):
     builtins._piv_real_print = builtins.print
-MUTE_PRINT = False
+MUTE_PRINT = True
 builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_print
 
 # Region tag used to build the default file list and the output name.
@@ -117,7 +117,7 @@ OUTPUT_STEM = None
 # tuple e.g. (0.1, 1.0) -- inclusive. (Applied in the filter cell below.)
 SELECT_FROT  = 0.5     # Hz,  e.g. 0.5
 SELECT_FLIB  = None    # Hz,  e.g. 0.44  or  [0.40, 0.44]
-SELECT_FSTAR = (0, 2)  # e.g. 3.0  or  (0.1, 1.0) for a range
+SELECT_FSTAR = (0, 4)  # e.g. 3.0  or  (0.1, 1.0) for a range
 SELECT_DPHI  = 2       # deg, e.g. 2.0
 
 # Topography selection: one of
@@ -332,10 +332,18 @@ def draw_flow_freq_summary(ax, vsummaries):
     ax.set_xlabel(r"$f^* = f_{\mathrm{lib}} / f_{\mathrm{rot}}$", fontsize=13)
     ax.set_ylabel(r"$f_{\mathrm{low}} / f_{\mathrm{rot}}$", fontsize=13)
     ax.set_title(r"$f_{\mathrm{low}}/f_{\mathrm{rot}}$ vs $f^*$", fontsize=14)
+    _drew = ax.has_data()
+    if _drew:
+        # Reference line f/f_rot = f*/2  (i.e. f_low = f_lib/2, the search-band edge).
+        _xl = ax.get_xlim()
+        _xs = np.array(_xl, dtype=float)
+        ax.plot(_xs, 0.5 * _xs, "k--", lw=1, alpha=0.7, zorder=2,
+                label=r"$f/f_{\mathrm{rot}} = f^*/2$")
+        ax.set_xlim(_xl)
     ax.grid(True, which="both", alpha=0.3)
-    if ax.has_data():
+    if _drew:
         ax.legend(fontsize=8)
-    return ax.has_data()
+    return _drew
 
 
 def _short_label(path):

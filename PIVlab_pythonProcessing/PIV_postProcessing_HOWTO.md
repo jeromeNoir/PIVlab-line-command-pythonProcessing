@@ -143,7 +143,7 @@ or `'FULL'`. The single-run / plotting tools pick one region locally.
 |---|---|
 | `batch_KineticEnergy.ipynb` | For every run, in **one pass** (the `.mat` is read once): ROI/FULL-averaged kinetic-energy time series `⟨Ek⟩(t)` **and** both FFT spectra of `Ek` — `FFT(⟨Ek⟩)` (average-then-FFT) and `⟨FFT(Ek)⟩` (FFT-then-average). Writes one combined per-run `.npz`, one dataset summary `.csv` (time-series stats + the `⟨FFT(Ek)⟩` quantities), a per-run 2-panel figure, and a resonance figure `⟨Ek⟩,std vs f*`. See Annex B. |
 | `batch_Velocity.ipynb` | Per-point FFT of U(t), V(t), ROI-averaged amplitude spectra, polarization, dimensionless numbers. Per-run `.npz`, spectrum + polarization figures, summary, and dataset colormaps. |
-| `single_KineticEnergy.ipynb` | Runs `batch_KineticEnergy`'s per-run step for **one** run — **identical** combined `.npz`, two-panel figure and summary row to what the batch writes for that run; optionally appends the row to the single `KineticEnergy_summary`. (The former `single_KineticEnergyFFT` viewer is folded in — both spectra are computed and drawn here.) |
+| `reprocess_single_KineticEnergy.ipynb` | Runs `batch_KineticEnergy`'s per-run step for **one** run — **identical** combined `.npz`, two-panel figure and summary row to what the batch writes for that run; optionally appends the row to the single `KineticEnergy_summary`. (The former `single_KineticEnergyFFT` viewer is folded in — both spectra are computed and drawn here.) |
 | `single_Velocity.ipynb` | Viewer: reads one `VelocityFFT` `.npz`, redraws the velocity spectrum + polarization, prints peaks and dimensionless numbers. |
 | `reprocess_single_Velocity.ipynb` | Runs `batch_Velocity`'s per-run step for **one** run **from the `.mat`** (not the `.npz`) — identical `.npz`, figures and summary row to the batch; `OVERWRITE_FIG` / `UPDATE_SUMMARY` switches. |
 | `plot_resonance_summary.ipynb` | Overlays one or more `KineticEnergy_summary` `.csv` (one marker/colour per file, legend shows `k0`/dphi/`f_rot`/topography) as the resonance figure vs `f*`, with `SELECT_*` filtering (value / list / `(lo,hi)` range). Also builds, from each sibling `VelocityFFT_summary`, two peak-amplitude-vs-`f_lib` figures (normalized ∣ raw): one for `f_lib`, one for `f_low` & `f_lib∓f_low`. Figures named `*overlay*` are saved in the dataset root. |
@@ -380,7 +380,7 @@ diamond markers), a polarization figure, the `VelocityFFT_summary_<region>.csv`,
 and dataset-level sweep colormaps (vs `f*`, `δφ`, `f_lib`). `SAVE_COLORMAP`
 toggles whether the colormaps are written.
 
-### `single_KineticEnergy.ipynb` / `.py`
+### `reprocess_single_KineticEnergy.ipynb` / `.py`
 
 Runs `batch_KineticEnergy`'s per-run step for **one** run (`PATH`). It reuses the
 batch's `compute_fft_per_point`, `make_fft_figure` and `build_row` verbatim, so

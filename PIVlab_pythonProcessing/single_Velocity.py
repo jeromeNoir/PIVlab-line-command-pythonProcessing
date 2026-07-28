@@ -8,30 +8,28 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 
 
 
-# # Velocity FFT of a single run
+# # Velocity FFT of a single run -- viewer
 # 
 # Interactive companion to `batch_Velocity.ipynb` (velocity analogue of
-# [`single_KineticEnergy.ipynb`](single_KineticEnergy.ipynb)).
+# [`reprocess_single_KineticEnergy.ipynb`](reprocess_single_KineticEnergy.ipynb)).
+# It **reads** one per-run `VelocityFFT_<region>.npz` (produced by `batch_Velocity`
+# / `reprocess_single_Velocity`) -- the ROI-averaged single-sided amplitude spectra
+# `amp_u`, `amp_v`, `amp_total` versus `f` -- and redraws it; it does **not** re-read
+# the `.mat` (use `reprocess_single_Velocity` to recompute from the `.mat`).
 # 
-# It reads a per-run `VelocityFFT_<region>.npz` (produced by
-# `batch_Velocity.ipynb`), which already holds the **region-averaged
-# single-sided amplitude spectra** of the two velocity components — `amp_u`,
-# `amp_v` (and `amp_total = amp_u + amp_v`) — versus frequency `f`, computed with
-# `np.fft.rfft` (mean removed, Hann window, amplitude-corrected) and the PIV
-# **field** sampling frequency `fps = cam_fps/2`.
+# The spectrum panel shows the **total** amplitude `|U|+|V|` (log y by default),
+# with dashed guides at `f_rot`, `f_lib` / `2 f_lib` and, when significant, `f_low`
+# and the `f_lib∓f_low` sidebands, and black diamonds sitting on the curve at each
+# detected peak. The y-axis floor is the decade below the visible minimum; the
+# x-axis spans `[0, max(4 f_rot, 4 f_lib)]` unless `FMAX` overrides it. `f_low` uses
+# the same `F_LOW_FMIN` / `THRESHOLD_PEAK` significance test as the batch. The
+# notebook prints the peak frequencies, the `f_low` test and the dimensionless
+# numbers, and draws the polarization figure from the same `.npz`.
 # 
-# Because the FFT is precomputed by the batch, this notebook only **loads and
-# plots** it (there is no time series stored and nothing is re-transformed). It
-# draws a **single panel** with the two component spectra `|FFT(U)|` and
-# `|FFT(V)|`.
-# 
-# The frequency axis spans `[0, max(4*frot, 4*flib)]` unless `FMAX` overrides it,
-# and the amplitude axis is set to decade bounds whose top is always at or above
-# the peak. If the libration frequency can be parsed from the run name, dashed
-# guides are drawn at `flib` and `2*flib` (the interior velocity responds mainly
-# at `flib`).
-# 
-# Section 7 additionally draws the polarization figure from the same `.npz`.
+# Both a raw and a `_normalized` figure are written when `SAVE` is on
+# (`OVERWRITE_FIG` guards the spectrum figures, `OVERWRITE_POL` the polarization
+# one). `UPDATE_SUMMARY` optionally inserts/replaces this run's row in
+# `VelocityFFT_summary_<region>.csv` (same schema + `kept` rule as the batch).
 
 
 # ## 1. Imports
@@ -71,7 +69,7 @@ builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_pr
 # --- edit me -------------------------------------------------------------
 PATH   = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k6_TopBottom/"
-          "frot0.50Hz_flib1.500Hz_dphi16deg_SS2/PostProcessing")   # run folder or .npz
+          "frot0.50Hz_flib0.460Hz_dphi2deg_SS1/PostProcessing")   # run folder or .npz
 REGION = 'ROI'       # 'ROI' or 'FULL' -- which VelocityFFT_<region>.npz to read
 LOGY   = True        # logarithmic amplitude axis (False -> linear)
 LOGX   = False       # logarithmic frequency axis (False -> linear)
@@ -79,7 +77,7 @@ FMAX   = 2        # upper frequency limit for the plot (Hz); None -> Nyquist
 SAVE   = True       # also write a PNG next to the .npz
 OVERWRITE_FIG  = True   # (over)write VelocityFFT_<region>[_normalized] even
                         #  if it exists (False -> keep the existing figures)
-UPDATE_SUMMARY = False  # insert/replace this run's row in the dataset's
+UPDATE_SUMMARY = True  # insert/replace this run's row in the dataset's
                         #  VelocityFFT_summary_<region>.csv (False -> leave it)
 
 # Saved-figure format: 'png' or 'pdf'. Every figure is written twice
@@ -88,9 +86,9 @@ FIG_FORMAT = 'png'
 OUTPUT = None        # PNG path; None -> VelocityFFT_<region>.png beside the .npz
 OVERWRITE_POL = False  # (over)write Velocity_polarization.png next to the .npz
                        #  even if it exists (False -> keep existing)
-F_LOW_FMIN = 0.3    # lower edge (Hz) of the band searched for f_low, the
+F_LOW_FMIN = 0.2    # lower edge (Hz) of the band searched for f_low, the
                      # strongest peak below f_lib/2; keeps the near-DC bins out
-THRESHOLD_PEAK = 4   # f_low is significant only if its amplitude exceeds
+THRESHOLD_PEAK = 1.5   # f_low is significant only if its amplitude exceeds
                        # THRESHOLD_PEAK * mean amplitude over the search band;
                        # otherwise f_low (and the sidebands) are set to NaN
 # -------------------------------------------------------------------------

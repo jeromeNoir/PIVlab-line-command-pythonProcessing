@@ -10,38 +10,35 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 
 # # Batch velocity-FFT post-processing of PIVlab runs
 # 
-# Companion to `batch_VelocityPSD.ipynb`. Same batch/calibration/ROI machinery,
-# but instead of a Welch **power spectral density** it computes, for **each grid
-# point** in the ROI, the single-sided **FFT amplitude spectrum** of the two
-# velocity components `U(t)` and `V(t)` (`np.fft.rfft`, mean removed, optional
-# window with amplitude correction). The per-point spectra are then **averaged
-# over the whole ROI**.
+# Loops over every sub-folder of `BASE_DIR`, loads the PIV `.mat`, calibrates the
+# field, and -- for each region (`ROI` / `FULL`) -- computes, for **every grid
+# point** in the region, the single-sided **FFT amplitude spectrum** of `U(t)` and
+# `V(t)` (`np.fft.rfft`, mean removed, Hann window with coherent-gain correction),
+# then **averages the per-point spectra over the region**.
 # 
-# - Per run it writes `<run>/PostProcessing/VelocityFFT.npz`
-#   (`f`, `amp_u`, `amp_v`, `amp_total = amp_u + amp_v`, all averaged over the ROI).
-# - Across all runs it writes `VelocityFFT_summary.csv` / `.xlsx` at `BASE_DIR`.
-# - Final figure `VelocityFFT_colormap_vs_fstar.png`: a colormap of the ROI-averaged
-#   amplitude spectrum over all runs — **x = f\* = f_lib/f_rot**, **y = FFT
-#   frequency**, colour = amplitude.
+# Per run it writes `<run>/PostProcessing/VelocityFFT_<region>.npz` (`f`, `amp_u`,
+# `amp_v`, `amp_total = amp_u + amp_v`, their `_star` = `/U0` versions, the ROI
+# power spectra and polarization statistics), a spectrum figure
+# `VelocityFFT_<region>[_normalized].<fmt>` (the **total** amplitude only, dashed
+# guides at `f_rot`, `f_lib` / `2 f_lib` and, when significant, `f_low` /
+# `f_lib∓f_low`, and black diamonds sitting on the curve at each detected peak),
+# and a polarization figure `Velocity_polarization_<region>[_normalized].<fmt>`.
 # 
-# **Difference from the PSD notebook.** The FFT amplitude spectrum has units of the
-# signal (m/s), not (m/s)^2/Hz, and — unlike Welch — uses the full record with no
-# segment averaging, so it has the finest frequency resolution `df = fps/nframes`
-# but a noisier (un-averaged) estimate. Amplitudes are single-sided: every bin
-# except DC (and Nyquist for even-length records) is doubled, and the window's
-# coherent gain is divided out so a pure tone reads its true amplitude.
+# It locates `f_peak` (dominant peak of the summed spectrum) and `f_low` (strongest
+# peak in `[F_LOW_FMIN, f_lib/2]`, kept only if it exceeds `THRESHOLD_PEAK ×` the
+# band mean -- otherwise `f_low` and its `f_lib∓f_low` sidebands are `NaN`), and
+# records the summed-spectrum amplitude at `f_lib`, `f_low`, `f_lib−f_low`,
+# `f_lib+f_low` (raw and `/U0`).
 # 
-# **Duplicate runs**: when several runs share the same parameters (same
-# `frot/flib/dphi`), only the *second* acquisition is kept in the colormap
-# (i.e. the `SSn` with the highest index — `SS2` beats `SS1`).
+# Across all runs it writes one `VelocityFFT_summary_<region>.csv` at `BASE_DIR`
+# (with the `kept` de-duplication -- one run per `frot/flib/dphi`, the highest
+# `SSn`) and, when `SAVE_COLORMAP`, dataset colormaps of the ROI-averaged spectrum
+# vs `f*`, `δφ` and `f_lib`.
 # 
-# Calibration is read from the **last row** of `acquisition_log.txt`
-# (`dt_vel = pulse_sep`, `fps = cam_fps`); `xscale = yscale = 1.2323e-4 m/px`.
-# 
-# Set the config in the next cell, then *Run All*. To test on a couple of folders
-# first, list their names in `ONLY_RUNS`.
-# 
-# **Polarization.** Besides the amplitude spectra, each run stores the ROI-mean power spectra `powerU_mean`/`powerV_mean` and the polarization ratio `powerRatio` = ROI mean of the per-point `powerV/powerU` (with `powerRatio_std`, `powerRatio_med`, `powerRatio_p25`, `powerRatio_p75`). The figure `Velocity_polarization.png` plots it against the inertial-wave relation `2*((2*frot/f)**2 - 1)`. The ratio is drawn both as the ROI mean and as the median with a 25-75 percentile band.
+# Calibration, ROI and file names come from the dataset's
+# `param_postProcessing.json` (the PIV field rate is `fps = cam_fps / 2`, since
+# PIVlab pairs images). Set the config in the next cell, then *Run All*;
+# `ONLY_RUNS` restricts to a few folders for testing.
 
 
 import os

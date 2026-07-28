@@ -484,7 +484,7 @@ def _load_npz(filepath, kind):
 def read_KineticEnergy(filepath):
     """Read a KineticEnergy_timeSeries_<region>.npz and return its variables.
 
-    Loads everything written by batch_KineticEnergy / single_KineticEnergy --
+    Loads everything written by batch_KineticEnergy / reprocess_single_KineticEnergy --
     run, region, calibrated, dt_vel, fps, xscale, yscale, pts_ROI, npoints,
     nframes, t, Ek_frame, mean_Ekin, std_Ekin (older files may lack a few) --
     returns them as a dict {name: value}, and prints the list of what it found.

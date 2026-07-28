@@ -8,7 +8,7 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 
 
 
-# # Reprocess a single run — Velocity FFT (from the `.mat`)
+# # Reprocess a single run -- Velocity FFT (from the `.mat`)
 # 
 # Runs **exactly** `batch_Velocity`'s per-run step for ONE run, starting from the
 # PIV `.mat` (not the cached `.npz`). It reuses the batch's helper, figure and
@@ -21,16 +21,17 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 #   guides, on-curve diamonds) and the polarization figure
 #   `Velocity_polarization_<region>[_normalized].<fmt>`;
 # - one row in `VelocityFFT_summary_<region>.csv` (with the `kept`
-#   de-duplication), when enabled.
+#   de-duplication).
 # 
-# **Overwrite switches** (config cell):
+# Everything is recomputed fresh from the `.mat`; the switches only decide what is
+# written to disk:
 # 
 # | switch | effect |
 # |---|---|
+# | `OVERWRITE_NPZ` | `False` keeps an existing `VelocityFFT_<region>.npz`; `True` re-writes it |
 # | `OVERWRITE_FIG` | `False` keeps existing figure files (spectrum + polarization); `True` re-writes them |
 # | `UPDATE_SUMMARY` | `False` leaves the summary CSV untouched; `True` inserts/replaces this run's row |
 # 
-# The `.npz` is always (re)written — reprocessing from the `.mat` is the point.
 # Use `single_Velocity` instead if you only want to redraw from an existing `.npz`.
 
 

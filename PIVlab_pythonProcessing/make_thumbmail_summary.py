@@ -10,28 +10,27 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 
 # # Thumbnail summary sheets
 # 
-# Collects the per-run figures scattered across every `<run>/PostProcessing/` folder and tiles them
-# into one **contact sheet per figure type**, so a whole sweep can be scanned at a glance.
+# Collects the per-run figures scattered across every `<run>/PostProcessing/`
+# folder and tiles them into one **contact sheet per figure type**, so a whole
+# sweep can be scanned at a glance.
 # 
-# For each dataset (`k6_TopBottom`, `k20_bottomOnly`) it builds four sheets:
+# For each dataset in `BASE_DIRS` and each `(figure stem, title)` in `GROUPS` it
+# builds one sheet -- e.g. `KineticEnergy_FFT_ROI` and `VelocityFFT_ROI` (add the
+# `_FULL` stems, or the `KineticEnergy_FFT_FULL` / `VelocityFFT_FULL` ones, by
+# un-commenting them in `GROUPS`). `SOURCE_NORMALIZED` / `SOURCE_EXT` pick which
+# per-run variant (raw vs `_normalized`, `png` vs `pdf`) is tiled.
 # 
-# | sheet | source figure in each run |
-# |---|---|
-# | Kinetic energy FFT — FULL | `KineticEnergy_FFT_FULL.png` |
-# | Kinetic energy FFT — ROI  | `KineticEnergy_FFT_ROI.png` |
-# | Velocity FFT — FULL       | `VelocityFFT_FULL.png` |
-# | Velocity FFT — ROI        | `VelocityFFT_ROI.png` |
+# Each sheet is written **next to that dataset's summary tables** (the dataset
+# root), named `Thumbnails_<figure>[_normalized].pdf` -- a **multi-page PDF with
+# true A4 pages** (210 x 297 mm, `PAGE_ORIENTATION` portrait/landscape). As many
+# tiles as fit are placed on each page (`NCOLS` per row, tile width `TILE_FRAC` of
+# the page) and the run list continues onto the next page; the tile size is
+# identical on every page.
 # 
-# Each sheet is written **next to that dataset's summary tables** (the dataset root), named
-# `Thumbnails_<figure>.pdf` — a **multi-page PDF with true A4 pages** (210 x 297 mm). As many
-# tiles as fit are placed on each page and the run list continues onto the next page; the tile
-# size is identical on every page.
-# 
-# Tiles are ordered physically — by `frot`, then `flib`, then `dphi` (parsed from the run name) — not
-# alphabetically, so a resonance sweep reads left-to-right in frequency order. Each tile is captioned
-# with its run name.
-# 
-# Run the settings cell, then *Run All*.
+# Tiles are ordered physically -- by `frot`, then `flib`, then `dphi` (parsed from
+# the run name) -- not alphabetically, so a resonance sweep reads left-to-right in
+# frequency order. Each tile is captioned with its run name. Run the settings cell,
+# then *Run All*.
 
 
 import os
