@@ -65,12 +65,12 @@ from piv_postprocessing_lib import (topography_arrangement, amp_at_freq,
 import builtins
 if not hasattr(builtins, "_piv_real_print"):
     builtins._piv_real_print = builtins.print
-MUTE_PRINT = True
+MUTE_PRINT = False
 builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_print
 
 # --- Configuration --------------------------------------------------------- #
 BASE_DIR = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
-            "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k6_TopBottom")  # top-level folder containing the runs
+            "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/FullCylinder")  # top-level folder containing the runs
 
 # Calibration, ROI, filenames, ... for this dataset: read from
 # param_postProcessing.json in BASE_DIR (also rebinds them inside
@@ -99,7 +99,7 @@ REGION = 'ROI'
 FIG_FORMAT = 'png'
 
 # Only runs without an existing result are processed unless this is True.
-REPROCESS_ALL = True
+REPROCESS_ALL = False
 
 # --- FFT settings ---------------------------------------------------------- #
 # Two spectra are always computed and drawn (the per-point field is already in
@@ -386,7 +386,8 @@ def _match(series, sel, tol=1e-6):
 
 
 def plot_summary(df, base_dir, region="", normalize=True, fmt=FIG_FORMAT):
-    """Two panels: mean(Ek) and std(Ek) versus f* = flib/frot, for one region.
+    """Two panels: mean(Ek) and std(Ek) for one region. The x-axis is
+    f* = flib/frot on the normalized figure and f_lib in Hz on the raw one.
 
     The main resonance sweep (most common dphi) is a connected curve; runs at
     other dphi are overlaid as squares; repeat acquisitions of an identical
@@ -395,9 +396,14 @@ def plot_summary(df, base_dir, region="", normalize=True, fmt=FIG_FORMAT):
     """
     tag = region or (str(df["region"].iloc[0]) if "region" in df and len(df) else "")
 
-    dfv = df.dropna(subset=["fstar", "mean_Ekin"]).copy()
+    # Normalized figure: x = f* = flib/frot. Raw figure: x = f_lib in Hz.
+    xcol = "fstar" if normalize else "flib_Hz"
+    xlabel = (r"$f^* = f_{\mathrm{lib}} / f_{\mathrm{rot}}$" if normalize
+              else r"$f_{\mathrm{lib}}$  (Hz)")
+
+    dfv = df.dropna(subset=[xcol, "mean_Ekin"]).copy()
     if dfv.empty:
-        print("  (figure skipped: no processed runs with valid f*)")
+        print("  (figure skipped: no processed runs with a valid %s)" % xcol)
         return None
 
     _no_filter = all(v is None for v in (SELECT_FROT, SELECT_FLIB, SELECT_DPHI))
@@ -411,7 +417,7 @@ def plot_summary(df, base_dir, region="", normalize=True, fmt=FIG_FORMAT):
     dfv = dfv.sort_values(["frot_Hz", "flib_Hz", "dphi_deg", "run"])
     dfv["is_repeat"] = (dfv.groupby(["frot_Hz", "flib_Hz", "dphi_deg"])
                           .cumcount() > 0)
-    dfv = dfv.sort_values("fstar")
+    dfv = dfv.sort_values(xcol)
 
     main_dphi = dfv.loc[~dfv["is_repeat"], "dphi_deg"].mode().iloc[0]
     is_main = (dfv["dphi_deg"] == main_dphi) & ~dfv["is_repeat"]
@@ -432,17 +438,17 @@ def plot_summary(df, base_dir, region="", normalize=True, fmt=FIG_FORMAT):
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
     for ax, (col, ylabel, title) in zip(axes, panels):
         main = dfv[is_main]
-        ax.plot(main["fstar"], main[col], "-o", color="C0",
+        ax.plot(main[xcol], main[col], "-o", color="C0",
                 label=r"$\delta\varphi=%g^\circ$ (sweep)" % main_dphi)
         for dphi, g in dfv[~is_main & ~dfv["is_repeat"]].groupby("dphi_deg"):
-            ax.plot(g["fstar"], g[col], "s", ms=7,
+            ax.plot(g[xcol], g[col], "s", ms=7,
                     label=r"$\delta\varphi=%g^\circ$" % dphi)
         rep = dfv[dfv["is_repeat"]]
         if not rep.empty:
-            ax.plot(rep["fstar"], rep[col], "D", ms=8, mfc="none",
+            ax.plot(rep[xcol], rep[col], "D", ms=8, mfc="none",
                     mec="k", mew=1.5, label="repeat")
         ax.set_yscale("log")
-        ax.set_xlabel(r"$f^* = f_{\mathrm{lib}} / f_{\mathrm{rot}}$", fontsize=13)
+        ax.set_xlabel(xlabel, fontsize=13)
         ax.set_ylabel(ylabel, fontsize=13)
         ax.set_title(title, fontsize=14)
         ax.grid(True, which="both", alpha=0.3)

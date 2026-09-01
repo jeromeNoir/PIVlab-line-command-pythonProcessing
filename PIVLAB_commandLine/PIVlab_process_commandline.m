@@ -10,7 +10,7 @@
 
 %% Tell MATLAB where the PIVlab package folders are
 %project_root = fileparts(fileparts(mfilename('/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_bottomOnly/')))
-project_root = '/Volumes/Archives/TOPOLIB_TopBottom/k6_TopBottom';
+project_root = '/Volumes/Archives/TOPOLIB_TopBottom/k6_bottomOnly_II';
 run_folder = 'frot050_flib0405_dphi2deg_SS1';
 image_folder = fullfile(project_root,run_folder);
 file_pattern = '*.tif'; % for example '*.bmp', '*.tif', '*.png', '*.jpg'

@@ -11,11 +11,11 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 # # Velocity FFT of a single run -- viewer
 # 
 # Interactive companion to `batch_Velocity.ipynb` (velocity analogue of
-# [`reprocess_single_KineticEnergy.ipynb`](reprocess_single_KineticEnergy.ipynb)).
+# [`process_single_Velocity.ipynb`](process_single_KineticEnergy.ipynb)).
 # It **reads** one per-run `VelocityFFT_<region>.npz` (produced by `batch_Velocity`
-# / `reprocess_single_Velocity`) -- the ROI-averaged single-sided amplitude spectra
+# / `process_single_Velocity`) -- the ROI-averaged single-sided amplitude spectra
 # `amp_u`, `amp_v`, `amp_total` versus `f` -- and redraws it; it does **not** re-read
-# the `.mat` (use `reprocess_single_Velocity` to recompute from the `.mat`).
+# the `.mat` (use `process_single_Velocity` to recompute from the `.mat`).
 # 
 # The spectrum panel shows the **total** amplitude `|U|+|V|` (log y by default),
 # with dashed guides at `f_rot`, `f_lib` / `2 f_lib` and, when significant, `f_low`

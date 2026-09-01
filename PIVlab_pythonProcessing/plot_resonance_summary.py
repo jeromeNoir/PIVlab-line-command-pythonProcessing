@@ -8,57 +8,33 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 
 
 
-# # Resonance & peak-amplitude summary
+# # Resonance summary -- single selected quantity
 # 
-# Overlays one or more `KineticEnergy_summary_<region>.csv` tables (written by
-# `batch_KineticEnergy` / `reprocess_single_KineticEnergy`, which now hold the kinetic-energy
-# statistics **and** the `<FFT(Ek)>` spectral amplitudes in one file) and their
-# sibling `VelocityFFT_summary_<region>.csv`. **Each summary file is drawn with its
-# own marker and colour**, so several datasets / regions / `k0` can be compared at
-# a glance; within a file each `(f_rot, dphi)` sweep is one series. Each file's
-# `k0`, and its topography (`top`/`bottom`), are read from its dataset's
-# `param_postProcessing.json` and shown in the legend.
+# Overlays one or more datasets and plots **one** quantity versus
+# `f* = f_lib/f_rot`, chosen by `PLOT_QUANTITY`, and saves **only** that figure
+# (named after the quantity so different picks never clash).
 # 
 # Set these in the config cell, then run all cells:
 # 
 # | option | meaning |
 # |---|---|
-# | `SUMMARY_FILES` | list of `KineticEnergy_summary` CSVs to overlay (full paths). Comment out lines to drop datasets. |
-# | `REGION` | `'ROI'` / `'FULL'` — builds the default file list and tags the output names |
-# | `FIG_FORMAT` | `'png'` or `'pdf'` — saved-figure format |
-# | `OUTPUT_STEM` | resonance-figure stem; `None` -> auto |
-# | `SELECT_FROT` / `SELECT_FLIB` / `SELECT_FSTAR` / `SELECT_DPHI` | keep rows matching a value, a list `[a, b]`, or a `(lo, hi)` inclusive range; `None` -> all |
-# | `SELECT_TOPO` | `'all'`, `'bottom only'` (bottomOnly datasets) or `'top and bottom'` (TopBottom) |
+# | `SUMMARY_FILES` | list of dataset **folders** to overlay (each holds `KineticEnergy_summary_<region>.csv` and `VelocityFFT_summary_<region>.csv`). Comment out lines to drop datasets. |
+# | `REGION` | `'ROI'` / `'FULL'` -- picks the summary files and tags the output |
+# | `FIG_FORMAT` | `'png'` or `'pdf'` |
+# | `SELECT_FROT` / `SELECT_FLIB` / `SELECT_FSTAR` / `SELECT_DPHI` | keep rows matching a value, a list `[a, b]`, or a `(lo, hi)` range; `None` -> all |
+# | `SELECT_TOPO` | `'all'`, `'bottom only'` (bottomOnly), `'top and bottom'` (TopBottom) or `'full cylinder'` (FullCylinder / k0=0) |
+# | `PLOT_QUANTITY` | which quantity to plot: `'velocity_fft'` (normalised velocity FFT amplitude at `f_lib`), `'mean_Ek'`, `'std_Ek'`, or `'ke_fft'` (per-point `<FFT(Ek)>` at `2 f_lib`) |
 # 
-# ## Figures produced
+# Each dataset is drawn with its own marker/colour (legend shows `k0`, topography,
+# `dphi`, `f_rot`), read from each folder's `param_postProcessing.json`.
 # 
-# Every figure is written both raw and `_normalized` (frequency axis `f/f_rot`,
-# quantity `/E_lib` or `/U0`), so the variants never overwrite each other.
-# 
-# - **Resonance** — `mean(Ek)` and `std(Ek)` in two panels. x-axis is
-#   `f* = f_lib/f_rot` on the normalized figure and **`f_lib` (Hz)** on the raw one.
-# - From each sibling `VelocityFFT_summary`, peak-amplitude figures:
-#   - amplitude at `f_lib` — two panels (normalized `/U0` | raw);
-#   - amplitude at `f_low` — **normalized panel only, linear y-axis**;
-#   - amplitude at `f_lib-f_low` and `f_lib+f_low` — two panels each;
-#   - `f_low/f_rot` vs `f*` — **linear y-axis**, same per-sweep symbols as the
-#     `f_low` amplitude figure.
-#   Runs whose `f_low` is not significant (`NaN`) are drawn as open squares on the
-#   y-axis floor (the decade below the data on a log axis, or `y = 0` on a linear
-#   one) so they stay visible.
-# - From the same `KineticEnergy_summary`, the `Ek`-spectrum amplitude at
-#   `2*f_lib` (two panels).
-# 
-# ## Output location & naming
-# 
-# - **A single `SUMMARY_FILES` entry** -> figures are written **beside that summary
-#   file** (its own dataset folder) and named with the region tag, matching that
-#   dataset's own figures, e.g. `KineticEnergy_vs_fstar_ROI[_normalized]` and
-#   `VelocityFFT_amp_flow_ROI`.
-# - **Several entries** -> figures are gathered in the project root and named with
-#   the `overlay` tag, e.g. `KineticEnergy_vs_fstar_overlay[_normalized]`.
-# - A filter being active appends `_filtered` to the name (so a filtered view never
-#   overwrites the full one).
+# **Output** -- one figure, `<quantity>_vs_fstar_<tag>[_filtered].<fmt>`, with the
+# quantity named in the file. A single dataset -> written in that dataset folder
+# with the region tag; several datasets -> the project root with the `overlay` tag;
+# an active `SELECT_*`/`SELECT_TOPO` filter appends `_filtered`.
+
+
+# ## 1. Imports
 
 
 import os
@@ -72,61 +48,12 @@ from piv_postprocessing_lib import (topography_arrangement, figure_filename, lib
                         read_paramPostprocessing, region_tag)
 
 
-# --- Mute switch -----------------------------------------------------------
-# MUTE_PRINT = True silences ALL print() output (this notebook AND the library),
-# so a running batch stays quiet while you edit other files. Re-run this cell to
-# toggle. (Figures are unaffected.)
-import builtins
-if not hasattr(builtins, "_piv_real_print"):
-    builtins._piv_real_print = builtins.print
-MUTE_PRINT = True
-builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_print
-
-# Region tag used to build the default file list and the output name.
-REGION = 'ROI'
+# ## 2. Functions
+# 
+# Every helper used below is defined in the single cell that follows -- grouped by role (I/O, dataset metadata, run selection, drawing). Nothing here runs the analysis; edit a helper and re-run just this cell.
 
 
-# Saved-figure format: 'png' or 'pdf'. Raw + '_normalized' versions are written.
-FIG_FORMAT = 'png'
-
-tag = region_tag(REGION)
-
-# Summary CSVs to OVERLAY on one figure -- one marker/colour per file. Full
-# paths; mix regions / datasets / k0 freely. k0 for each is read from its
-# dataset's param_postProcessing.json and shown in the legend.
-_CEG = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
-        "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA")
-SUMMARY_FILES = [
-    os.path.join(_CEG, "k6_TopBottom", "KineticEnergy_summary_%s.csv" % tag),
-    # os.path.join(_CEG, "k20_bottomOnly", "KineticEnergy_summary_%s.csv" % tag),
-    # os.path.join(_CEG, "k6_bottomOnly", "KineticEnergy_summary_%s.csv" % tag)
-]
-
-# Where the overlay figures are written: with a SINGLE summary file, beside that
-# file (in its own dataset folder); with several, gathered in the project root.
-_OUT_DIR = os.path.dirname(SUMMARY_FILES[0]) if len(SUMMARY_FILES) == 1 else _CEG
-# Name tag on the output figures: the region tag for a SINGLE dataset (so the
-# names match that dataset's own figures, e.g. KineticEnergy_vs_fstar_ROI), or
-# 'overlay' when several datasets are combined.
-_NAME_TAG = tag if len(SUMMARY_FILES) == 1 else 'overlay'
-
-# Figure output stem (xaxis/normalized appended). None -> beside the 1st summary.
-OUTPUT_STEM = None
-
-# Filtering: None (all), a value, a list [0.40, 0.44], or a (lo, hi) RANGE
-# tuple e.g. (0.1, 1.0) -- inclusive. (Applied in the filter cell below.)
-SELECT_FROT  = 0.5     # Hz,  e.g. 0.5
-SELECT_FLIB  = None    # Hz,  e.g. 0.44  or  [0.40, 0.44]
-SELECT_FSTAR = (0, 4)  # e.g. 3.0  or  (0.1, 1.0) for a range
-SELECT_DPHI  = 2       # deg, e.g. 2.0
-
-# Topography selection: one of
-#   'all'            -> any topography (no filter)
-#   'bottom only'    -> bottomOnly datasets  (top=False, bottom=True)
-#   'top and bottom' -> TopBottom datasets   (top=True,  bottom=True)
-SELECT_TOPO = "all"
-
-
+# ---- I/O ------------------------------------------------------------------
 def load_summary(path):
     """Read the summary table from .xlsx or .csv into a DataFrame."""
     ext = os.path.splitext(path)[1].lower()
@@ -136,6 +63,73 @@ def load_summary(path):
         return pd.read_csv(path)
     raise ValueError("Unsupported summary format: %s" % ext)
 
+
+# ---- Dataset helpers (legend label, k0, topography) -----------------------
+
+def _short_label(dsdir):
+    """Compact legend name '<dataset> [<region>]' from a dataset folder."""
+    return "%s [%s]" % (os.path.basename(dsdir.rstrip("/")), tag)
+
+
+def _dataset_k0(dsdir):
+    """k0 for a dataset folder, read from its param_postProcessing.json
+    (falls back to the library default if the folder has no param file)."""
+    pf = os.path.join(dsdir, ppl.PARAM_FILENAME)
+    if os.path.isfile(pf):
+        return read_paramPostprocessing(dsdir, apply=True).k0
+    print("  [warn] no %s in %s -> using default k0=%g"
+          % (ppl.PARAM_FILENAME, dsdir, ppl.k0))
+    return ppl.k0
+
+
+def _resolve_topo(dsdir, k0):
+    """(top, bottom) topography for a dataset. k0 == 0 means no topography
+    (a full cylinder) -> (False, False), the same as a 'FullCylinder' folder
+    name; otherwise it is read from the folder name via topography_arrangement."""
+    if k0 == 0:
+        return (False, False)
+    return topography_arrangement(dsdir)
+
+
+# ---- Run-selection helpers ------------------------------------------------
+
+def _match(series, sel, tol=1e-6):
+    """Boolean mask selecting rows of `series`:
+      None             -> all rows
+      scalar           -> equal to that value (within tol)
+      (lo, hi) tuple   -> range  lo <= value <= hi  (inclusive)
+      [a, b, ...] list -> equal to any listed value
+    """
+    if sel is None:
+        return pd.Series(True, index=series.index)
+    if isinstance(sel, tuple) and len(sel) == 2:
+        lo, hi = sel
+        return (series >= lo - tol) & (series <= hi + tol)
+    vals = sel if isinstance(sel, (list, set)) else [sel]
+    mask = pd.Series(False, index=series.index)
+    for v in vals:
+        mask |= (series - v).abs() <= tol
+    return mask
+
+
+def _topo_ok(topo):
+    """True if (top, bottom) matches SELECT_TOPO ('all' / 'bottom only' /
+    'top and bottom' / 'full cylinder')."""
+    top, bot = topo
+    if _TOPO_SEL in ("all", "none", ""):
+        return True
+    if _TOPO_SEL in ("bottom only", "bottomonly", "bottom"):
+        return (top == False) and (bot == True)
+    if _TOPO_SEL in ("top and bottom", "topbottom", "top+bottom",
+                     "top and bottom only"):
+        return (top == True) and (bot == True)
+    if _TOPO_SEL in ("full cylinder", "fullcylinder", "full", "none topo"):
+        return (top == False) and (bot == False)
+    raise ValueError("SELECT_TOPO must be 'all', 'bottom only', "
+                     "'top and bottom' or 'full cylinder' (got %r)" % SELECT_TOPO)
+
+
+# ---- Drawing helpers ------------------------------------------------------
 
 MARKERS = ["o", "s", "^", "D", "v", "P", "*", "X", "h", "<"]
 
@@ -190,7 +184,8 @@ def draw_summary(axes, summaries, normalize=True):
         ax.set_title(title, fontsize=14)
         ax.grid(True, which="both", alpha=0.3)
         if j > 0:
-            ax.legend(fontsize=8)
+            ax.legend(fontsize=8, loc="center left",
+                      bbox_to_anchor=(1.02, 0.5), borderaxespad=0.0)
     return any_drawn
 
 
@@ -285,7 +280,8 @@ def draw_amp_summary(axes, vsummaries, quantities,
         ax.set_title("normalized" if star else "raw", fontsize=14)
         ax.grid(True, which="both", alpha=0.3)
         if ax.has_data():
-            ax.legend(fontsize=8)
+            ax.legend(fontsize=8, loc="center left",
+                      bbox_to_anchor=(1.02, 0.5), borderaxespad=0.0)
     return drew
 
 
@@ -342,103 +338,192 @@ def draw_flow_freq_summary(ax, vsummaries):
         ax.set_xlim(_xl)
     ax.grid(True, which="both", alpha=0.3)
     if _drew:
-        ax.legend(fontsize=8)
+        ax.legend(fontsize=8, loc="center left",
+                      bbox_to_anchor=(1.02, 0.5), borderaxespad=0.0)
     return _drew
 
 
-def _short_label(path):
-    """A compact legend name: '<dataset> [<region>]' from a summary path."""
-    dataset = os.path.basename(os.path.dirname(path.rstrip("/")))
-    stem = (os.path.basename(path).replace("KineticEnergyFFT_summary_", "")
-            .replace("KineticEnergy_summary_", "").replace("VelocityFFT_summary_", "")
-            .replace(".csv", ""))
-    return "%s [%s]" % (dataset, stem)
+def draw_quantity_overlay(ax, summaries, col, ylabel, xcol="fstar"):
+    """One quantity `col` vs f* (= f_lib/f_rot), overlaid across datasets.
+
+    Colour encodes the (file, f_rot, dphi) sweep. Run idx 1 is a connected curve
+    with filled circles; each higher run idx (2, 3, ... -- repeats of an
+    identical run) is drawn as **scattered open markers with no line** (diamond
+    for 2, square for 3, ...), in the sweep's colour. The legend keeps both the
+    run information and the run idx. Returns True if drawn.
+    """
+    idx_markers = {1: "o", 2: "D", 3: "s", 4: "^", 5: "v", 6: "P", 7: "*"}
+    _mk = lambda ix: (idx_markers.get(int(ix), "X") if np.isfinite(ix) else "o")
+    gi = 0
+    drew = False
+    for s in summaries:
+        df = s["df"]
+        for (frot, dphi), gp in df.groupby(["frot_Hz", "dphi_deg"]):
+            color = "C%d" % (gi % 10)
+            gi += 1
+            if col not in df.columns:
+                continue
+            g0 = gp.dropna(subset=[xcol, col])
+            if g0.empty:
+                continue
+            _ix = (g0["run idx"] if "run idx" in g0.columns
+                   else pd.Series(1, index=g0.index)).fillna(1)
+            for _v, _sub in g0.groupby(_ix):
+                _sub = _sub.sort_values(xcol)
+                _lab = (r"$k_0$=%g (top=%s, bot=%s), "
+                        r"$\delta\varphi$=%g$^\circ$, $f_{\mathrm{rot}}$=%g Hz"
+                        r", run idx %d"
+                        % (s["k0"], s["topo"][0], s["topo"][1], dphi, frot, int(_v)))
+                if int(_v) <= 1:
+                    # run idx 1: connected curve, filled markers.
+                    ax.plot(_sub[xcol], _sub[col], "-" + _mk(_v), color=color,
+                            mfc=color, ms=6, label=_lab)
+                else:
+                    # run idx > 1: scattered open markers, no connecting line.
+                    ax.plot(_sub[xcol], _sub[col], _mk(_v), color=color,
+                            mfc="none", mec=color, mew=1.3, ms=7,
+                            linestyle="None", label=_lab)
+            drew = True
+    ax.set_yscale("log")
+    ax.set_xlabel(r"$f^* = f_{\mathrm{lib}} / f_{\mathrm{rot}}$", fontsize=13)
+    ax.set_ylabel(ylabel, fontsize=13)
+    ax.grid(True, which="both", alpha=0.3)
+    if drew:
+        ax.legend(fontsize=8, loc="center left",
+                      bbox_to_anchor=(1.02, 0.5), borderaxespad=0.0)
+    return drew
 
 
-def _dataset_k0(path):
-    """k0 for a summary file, read from its dataset's param_postProcessing.json
-    (falls back to the library default if that dataset has no param file)."""
-    dsdir = os.path.dirname(path.rstrip("/"))
-    pf = os.path.join(dsdir, ppl.PARAM_FILENAME)
-    if os.path.isfile(pf):
-        return read_paramPostprocessing(dsdir, apply=True).k0
-    print("  [warn] no %s beside %s -> using default k0=%g"
-          % (ppl.PARAM_FILENAME, path, ppl.k0))
-    return ppl.k0
+# ## 3. Configuration
+# 
+# Choose the datasets, region, `SELECT_*` filters and `PLOT_QUANTITY` here, then run the cells below from top to bottom.
 
 
+# --- Mute switch -----------------------------------------------------------
+# MUTE_PRINT = True silences ALL print() output (this notebook AND the library),
+# so a running batch stays quiet while you edit other files. Re-run this cell to
+# toggle. (Figures are unaffected.)
+import builtins
+if not hasattr(builtins, "_piv_real_print"):
+    builtins._piv_real_print = builtins.print
+MUTE_PRINT = False
+builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_print
+
+# Region tag used to build the default file list and the output name.
+REGION = 'ROI'
+
+
+# Saved-figure format: 'png' or 'pdf'. Raw + '_normalized' versions are written.
+FIG_FORMAT = 'png'
+
+tag = region_tag(REGION)
+
+# Dataset FOLDERS to OVERLAY on one figure -- one marker/colour per dataset. Each
+# folder must hold KineticEnergy_summary_<region>.csv (and, for the velocity
+# figures, VelocityFFT_summary_<region>.csv). Both summaries are loaded, so any
+# PLOT_QUANTITY works; k0 / topography come from each folder's
+# param_postProcessing.json and are shown in the legend.
+_CEG = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
+        "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA")
+SUMMARY_FILES = [
+    os.path.join(_CEG, "k6_TopBottom"),
+    os.path.join(_CEG, "k20_bottomOnly"),
+    os.path.join(_CEG, "k6_bottomOnly"),
+    os.path.join(_CEG, "k6_TopBottom_notAligned"),
+    os.path.join(_CEG, "FullCylinder"),
+]
+
+# --- Selected-quantity figure --------------------------------------------
+# The cell "Selected quantity vs f*" plots ONE quantity (overlaid across the
+# summary files) and writes it with that quantity named in the file name. Pick:
+#   'velocity_fft' -> normalised velocity FFT amplitude at f_lib   (amp_flib_star)
+#   'mean_Ek'      -> mean kinetic energy                          (mean_Ekin_star)
+#   'std_Ek'       -> std of kinetic energy                        (std_Ekin_star)
+#   'ke_fft'       -> kinetic-energy FFT amplitude, per-point <FFT(Ek)>, at
+#                     2*f_lib                                      (amp_2flib_star)
+PLOT_QUANTITY = 'mean_Ek'  # 'mean_Ek', 'std_Ek', 'ke_fft'
+
+# Filtering: None (all), a value, a list [0.40, 0.44], or a (lo, hi) RANGE
+# tuple e.g. (0.1, 1.0) -- inclusive. (Applied in the filter cell below.)
+SELECT_FROT  = 0.5     # Hz,  e.g. 0.5
+SELECT_FLIB  = None    # Hz,  e.g. 0.44  or  [0.40, 0.44]
+SELECT_FSTAR = (0, 1)  # e.g. 3.0  or  (0.1, 1.0) for a range
+SELECT_DPHI  = (2, 4)   # deg, e.g. 2.0
+
+# Topography selection: one of
+#   'all'            -> any topography (no filter)
+#   'bottom only'    -> bottomOnly datasets  (top=False, bottom=True)
+#   'top and bottom' -> TopBottom datasets   (top=True,  bottom=True)
+#   'full cylinder'  -> FullCylinder / k0=0  (top=False, bottom=False)
+SELECT_TOPO = "all"
+
+
+
+# Figure output stem (xaxis/normalized appended). None -> beside the 1st summary.
+OUTPUT_STEM = None
+
+# Where the overlay figures are written: with a SINGLE dataset, in that dataset
+# folder; with several, gathered in the project root.
+_OUT_DIR = SUMMARY_FILES[0] if len(SUMMARY_FILES) == 1 else _CEG
+# Name tag on the output figures: the region tag for a SINGLE dataset (so the
+# names match that dataset's own figures, e.g. KineticEnergy_vs_fstar_ROI), or
+# 'overlay' when several datasets are combined.
+_NAME_TAG = tag if len(SUMMARY_FILES) == 1 else 'overlay'
+
+
+# ## 4. Load the summaries
+# 
+# Reads each dataset's `KineticEnergy_summary_<region>.csv` and `VelocityFFT_summary_<region>.csv` into `summaries` / `vfft_summaries`, attaching `k0` and the topography arrangement.
+
+
+# KineticEnergy summaries (energy stats AND the Ek-FFT amplitudes -- one file).
 summaries = []
-for _path in SUMMARY_FILES:
-    _df = load_summary(_path)
-    _k0 = _dataset_k0(_path)
+for _dir in SUMMARY_FILES:
+    _ke = os.path.join(_dir, "KineticEnergy_summary_%s.csv" % tag)
+    if not os.path.isfile(_ke):
+        print("  [skip] no %s in %s" % (os.path.basename(_ke), _dir))
+        continue
+    _df = load_summary(_ke)
+    _k0 = _dataset_k0(_dir)
     # Fill the normalized columns if the summary predates them.
     if "mean_Ekin_star" not in _df.columns:
         _scale = libration_ke_scale(_df["dphi_deg"], _df["flib_Hz"])
         _df["mean_Ekin_star"] = _df["mean_Ekin"] / _scale
         _df["std_Ekin_star"] = _df["std_Ekin"] / _scale
-    summaries.append({"name": _short_label(_path), "df": _df, "k0": _k0,
-                      "topo": topography_arrangement(_path)})
-    print("Loaded %3d runs   k0=%g   %s" % (len(_df), _k0, _path))
+    summaries.append({"name": _short_label(_dir), "df": _df, "k0": _k0,
+                      "topo": _resolve_topo(_dir, _k0)})
+    print("Loaded %3d runs   k0=%g   %s" % (len(_df), _k0, _ke))
+print("\n%d dataset(s) loaded (KineticEnergy)." % len(summaries))
 
-print("\n%d summary file(s) loaded." % len(summaries))
-
-# Sibling VelocityFFT summaries (for the peak-amplitude figures below).
+# Sibling VelocityFFT summaries (for the velocity peak-amplitude figures).
 vfft_summaries = []
-for _path in SUMMARY_FILES:
-    _vpath = _path.replace("KineticEnergy_summary", "VelocityFFT_summary")
-    if not os.path.isfile(_vpath):
-        print("  [skip] no VelocityFFT summary beside %s" % os.path.basename(_path))
+for _dir in SUMMARY_FILES:
+    _vf = os.path.join(_dir, "VelocityFFT_summary_%s.csv" % tag)
+    if not os.path.isfile(_vf):
+        print("  [skip] no %s in %s" % (os.path.basename(_vf), _dir))
         continue
-    _vdf = load_summary(_vpath)
-    vfft_summaries.append({"name": _short_label(_vpath), "df": _vdf,
-                           "k0": _dataset_k0(_path),
-                           "topo": topography_arrangement(_vpath)})
-    print("Loaded %3d runs   VelocityFFT   %s" % (len(_vdf), _vpath))
-print("%d VelocityFFT summary file(s) loaded." % len(vfft_summaries))
+    _vdf = load_summary(_vf)
+    _k0v = _dataset_k0(_dir)
+    vfft_summaries.append({"name": _short_label(_dir), "df": _vdf,
+                           "k0": _k0v,
+                           "topo": _resolve_topo(_dir, _k0v)})
+    print("Loaded %3d runs   VelocityFFT   %s" % (len(_vdf), _vf))
+print("%d dataset(s) loaded (VelocityFFT)." % len(vfft_summaries))
 
-# The Ek-spectrum amplitudes (amp_2flib, ...) now live in the combined
-# KineticEnergy summary, so the Ek-amplitude figure reuses `summaries`.
+# The Ek-spectrum amplitudes (amp_2flib, ...) live in the combined KineticEnergy
+# summary, so the Ek-amplitude figure reuses `summaries`.
 kefft_summaries = summaries
 
 
-def _match(series, sel, tol=1e-6):
-    """Boolean mask selecting rows of `series`:
-      None             -> all rows
-      scalar           -> equal to that value (within tol)
-      (lo, hi) tuple   -> range  lo <= value <= hi  (inclusive)
-      [a, b, ...] list -> equal to any listed value
-    """
-    if sel is None:
-        return pd.Series(True, index=series.index)
-    if isinstance(sel, tuple) and len(sel) == 2:
-        lo, hi = sel
-        return (series >= lo - tol) & (series <= hi + tol)
-    vals = sel if isinstance(sel, (list, set)) else [sel]
-    mask = pd.Series(False, index=series.index)
-    for v in vals:
-        mask |= (series - v).abs() <= tol
-    return mask
+# ## 5. Apply the `SELECT_*` filters
+# 
+# Keeps the rows matching the `SELECT_*` / `SELECT_TOPO` choices, producing `summaries_sel` / `vfft_summaries_sel` (and `kefft_summaries_sel`).
 
 
 _TOPO_SEL = str(SELECT_TOPO).strip().lower()
 no_filter = (all(s is None for s in
                  (SELECT_FROT, SELECT_FLIB, SELECT_FSTAR, SELECT_DPHI))
              and _TOPO_SEL in ("all", "none", ""))
-
-
-def _topo_ok(topo):
-    """True if (top, bottom) matches SELECT_TOPO ('all' / 'bottom only' /
-    'top and bottom')."""
-    top, bot = topo
-    if _TOPO_SEL in ("all", "none", ""):
-        return True
-    if _TOPO_SEL in ("bottom only", "bottomonly", "bottom"):
-        return (top == False) and (bot == True)
-    if _TOPO_SEL in ("top and bottom", "topbottom", "top+bottom",
-                     "top and bottom only"):
-        return (top == True) and (bot == True)
-    raise ValueError("SELECT_TOPO must be 'all', 'bottom only' or "
-                     "'top and bottom' (got %r)" % SELECT_TOPO)
 
 summaries_sel = []
 for s in summaries:
@@ -470,120 +555,40 @@ for s in vfft_summaries:
 kefft_summaries_sel = summaries_sel
 
 
-# The figure is built HERE (cell top level) so the %matplotlib widget backend
-# shows it interactively. Both raw and normalized are saved; a filtered view
-# gets a '_filtered' tag so it never overwrites the full resonance figure.
-_stem = OUTPUT_STEM or os.path.join(_OUT_DIR, "KineticEnergy_vs_fstar_%s" % _NAME_TAG)
-_ftag = "" if no_filter else "_filtered"
-
-for _norm in (False, True):
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    if not draw_summary(axes, summaries_sel, normalize=_norm):
-        plt.close(fig)
-        print("Nothing to plot.")
-        continue
-    fig.suptitle("Kinetic energy summaries%s"
-                 % ("   (normalized)" if _norm else ""), fontsize=12)
-    fig.tight_layout()
-    out = figure_filename(_stem + _ftag, FIG_FORMAT, normalized=_norm)
-    fig.savefig(out, dpi=200, bbox_inches="tight")
-    print("Figure written to:\n  %s" % out)
+# ## 6. Plot the selected quantity
+# 
+# Draws and saves the single `PLOT_QUANTITY` figure, overlaid across all selected datasets.
 
 
-# Peak amplitude at f_lib vs f_lib (left normalized /U0, right raw).
-# 'overlay' name -> saved in _OUT_DIR.
+# Selected quantity vs f* -- controlled by PLOT_QUANTITY (config cell). The
+# chosen quantity is named in the output file so different picks never clash.
 _ft = "" if no_filter else "_filtered"
-if any(not s["df"].empty for s in vfft_summaries_sel):
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    draw_amp_summary(axes, vfft_summaries_sel, ["flib"])
-    fig.suptitle(r"Peak amplitude at $f_{\mathrm{lib}}$ vs $f_{\mathrm{lib}}$",
-                 fontsize=13)
+# (source list, column, y-label, file tag) for each choice.
+_QMAP = {
+    "velocity_fft": (vfft_summaries_sel, "amp_flib_star",
+                     r"$(|\widehat{U}|+|\widehat{V}|)/U_0$ at $f_{\mathrm{lib}}$",
+                     "VelocityFFT_amp_flib_norm"),
+    "mean_Ek": (summaries_sel, "mean_Ekin_star",
+                r"$\langle E_k \rangle / E_{\mathrm{lib}}$", "meanKineticEnergy"),
+    "std_Ek": (summaries_sel, "std_Ekin_star",
+               r"std $E_k / E_{\mathrm{lib}}$", "stdKineticEnergy"),
+    "ke_fft": (summaries_sel, "amp_2flib_star",
+               r"$|\langle\widehat{E_k}\rangle| / E_{\mathrm{lib}}$ at $2f_{\mathrm{lib}}$",
+               "KineticEnergyFFT_amp_2flib"),
+}
+if PLOT_QUANTITY not in _QMAP:
+    raise ValueError("PLOT_QUANTITY must be one of %s (got %r)"
+                     % (list(_QMAP), PLOT_QUANTITY))
+_src, _col, _ylab, _qtag = _QMAP[PLOT_QUANTITY]
+if any(not s["df"].empty for s in _src):
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+    draw_quantity_overlay(ax, _src, _col, _ylab)
+    fig.suptitle(r"%s  vs  $f^*$" % _ylab, fontsize=13)
     fig.tight_layout()
-    _out = figure_filename(os.path.join(_OUT_DIR, "VelocityFFT_amp_flib_%s" % _NAME_TAG + _ft),
+    # The quantity (_qtag) is in the file name so the plot is self-identifying.
+    _out = figure_filename(os.path.join(_OUT_DIR, "%s_vs_fstar_%s" % (_qtag, _NAME_TAG) + _ft),
                            FIG_FORMAT)
     fig.savefig(_out, dpi=200, bbox_inches="tight")
     print("Figure written to:\n  %s" % _out)
 else:
-    print("No VelocityFFT summaries -- amp(f_lib) figure skipped.")
-
-
-# Peak amplitude at f_low vs f* -- NORMALIZED panel only (no raw panel).
-_ft = "" if no_filter else "_filtered"
-if any(not s["df"].empty for s in vfft_summaries_sel):
-    fig, ax = plt.subplots(figsize=(7.5, 5.5))
-    draw_amp_summary(ax, vfft_summaries_sel, ["flow"], nan_as_floor=True,
-                     panels=("star",), logy=False)
-    fig.suptitle(r"Peak amplitude at $f_{\mathrm{low}}$ vs $f_{\mathrm{lib}}$", fontsize=13)
-    fig.tight_layout()
-    _out = figure_filename(os.path.join(_OUT_DIR, "VelocityFFT_amp_flow_%s" % _NAME_TAG + _ft),
-                           FIG_FORMAT)
-    fig.savefig(_out, dpi=200, bbox_inches="tight")
-    print("Figure written to:\n  %s" % _out)
-else:
-    print("No VelocityFFT summaries -- amp(flow) figure skipped.")
-
-
-# Peak amplitude at f_lib - f_low vs f_lib (left normalized /U0, right raw).
-# 'overlay' name -> saved in _OUT_DIR.
-_ft = "" if no_filter else "_filtered"
-if any(not s["df"].empty for s in vfft_summaries_sel):
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    draw_amp_summary(axes, vfft_summaries_sel, ["flib_minus_flow"], nan_as_floor=True)
-    fig.suptitle(r"Peak amplitude at $f_{\mathrm{lib}}-f_{\mathrm{low}}$ vs $f_{\mathrm{lib}}$", fontsize=13)
-    fig.tight_layout()
-    _out = figure_filename(os.path.join(_OUT_DIR, "VelocityFFT_amp_flib_minus_flow_%s" % _NAME_TAG + _ft),
-                           FIG_FORMAT)
-    fig.savefig(_out, dpi=200, bbox_inches="tight")
-    print("Figure written to:\n  %s" % _out)
-else:
-    print("No VelocityFFT summaries -- amp(flib_minus_flow) figure skipped.")
-
-
-# Peak amplitude at f_lib + f_low vs f_lib (left normalized /U0, right raw).
-# 'overlay' name -> saved in _OUT_DIR.
-_ft = "" if no_filter else "_filtered"
-if any(not s["df"].empty for s in vfft_summaries_sel):
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    draw_amp_summary(axes, vfft_summaries_sel, ["flib_plus_flow"], nan_as_floor=True)
-    fig.suptitle(r"Peak amplitude at $f_{\mathrm{lib}}+f_{\mathrm{low}}$ vs $f_{\mathrm{lib}}$", fontsize=13)
-    fig.tight_layout()
-    _out = figure_filename(os.path.join(_OUT_DIR, "VelocityFFT_amp_flib_plus_flow_%s" % _NAME_TAG + _ft),
-                           FIG_FORMAT)
-    fig.savefig(_out, dpi=200, bbox_inches="tight")
-    print("Figure written to:\n  %s" % _out)
-else:
-    print("No VelocityFFT summaries -- amp(flib_plus_flow) figure skipped.")
-
-
-# f_low/f_rot vs f* -- same per-sweep symbols as the amp(f_low) figure.
-_ft = "" if no_filter else "_filtered"
-if any(not s["df"].empty for s in vfft_summaries_sel):
-    fig, ax = plt.subplots(figsize=(7.5, 5.5))
-    draw_flow_freq_summary(ax, vfft_summaries_sel)
-    fig.suptitle(r"$f_{\mathrm{low}} / f_{\mathrm{rot}}$ vs $f^*$", fontsize=13)
-    fig.tight_layout()
-    _out = figure_filename(os.path.join(_OUT_DIR, "VelocityFFT_freq_flow_%s" % _NAME_TAG + _ft),
-                           FIG_FORMAT)
-    fig.savefig(_out, dpi=200, bbox_inches="tight")
-    print("Figure written to:\n  %s" % _out)
-else:
-    print("No VelocityFFT summaries -- f_low frequency figure skipped.")
-
-
-# Ek-spectrum peak amplitude at f_lib and 2*f_lib vs f_lib (left normalized
-# /E_lib, right raw). 'overlay' name -> saved in _OUT_DIR.
-_ft = "" if no_filter else "_filtered"
-if any(not s["df"].empty for s in kefft_summaries_sel):
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    draw_amp_summary(axes, kefft_summaries_sel, ["2flib"],
-                     ylab_star=r"$|\widehat{E_k}| / E_{\mathrm{lib}}$",
-                     ylab_raw=r"$|\widehat{E_k}|$  (m$^2$/s$^2$)")
-    fig.suptitle(r"$E_k$ spectrum amplitude at $2f_{\mathrm{lib}}$ vs $f_{\mathrm{lib}}$",
-                 fontsize=13)
-    fig.tight_layout()
-    _out = figure_filename(os.path.join(_OUT_DIR, "KineticEnergyFFT_amp_2flib_%s" % _NAME_TAG + _ft),
-                           FIG_FORMAT)
-    fig.savefig(_out, dpi=200, bbox_inches="tight")
-    print("Figure written to:\n  %s" % _out)
-else:
-    print("No KineticEnergyFFT summaries -- Ek amp figure skipped.")
+    print("No summaries for PLOT_QUANTITY=%r -- selected-quantity figure skipped." % PLOT_QUANTITY)

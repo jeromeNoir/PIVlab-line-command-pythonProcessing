@@ -95,6 +95,7 @@ PTS_ROI = _P.PTS_ROI
 | `H` | container height [m] |
 | `k0` | dimensionless azimuthal wavenumber (number of wavelengths, 6) |
 | `nu` | kinematic viscosity [m²/s] |
+| `VALIDATE_VELOCITY` | `True` (default): `load_piv` returns PIVlab's **filtered/validated** velocity (`u_filt`/`v_filt`). `False`: returns the **original** velocity (`u`/`v`) with NaN wherever the vector failed validation (`typevector_filt != 1`). |
 
 Derived (not stored, recomputed on load): the physical wavenumber `k = k0·π/R`
 and wavelength `l = 2π/k`. Edit `R`/`k0`, never `k`/`l`.
@@ -143,12 +144,17 @@ or `'FULL'`. The single-run / plotting tools pick one region locally.
 |---|---|
 | `batch_KineticEnergy.ipynb` | For every run, in **one pass** (the `.mat` is read once): ROI/FULL-averaged kinetic-energy time series `⟨Ek⟩(t)` **and** both FFT spectra of `Ek` — `FFT(⟨Ek⟩)` (average-then-FFT) and `⟨FFT(Ek)⟩` (FFT-then-average). Writes one combined per-run `.npz`, one dataset summary `.csv` (time-series stats + the `⟨FFT(Ek)⟩` quantities), a per-run 2-panel figure, and a resonance figure `⟨Ek⟩,std vs f*`. See Annex B. |
 | `batch_Velocity.ipynb` | Per-point FFT of U(t), V(t), ROI-averaged amplitude spectra, polarization, dimensionless numbers. Per-run `.npz`, spectrum + polarization figures, summary, and dataset colormaps. |
-| `reprocess_single_KineticEnergy.ipynb` | Runs `batch_KineticEnergy`'s per-run step for **one** run — **identical** combined `.npz`, two-panel figure and summary row to what the batch writes for that run; optionally appends the row to the single `KineticEnergy_summary`. (The former `single_KineticEnergyFFT` viewer is folded in — both spectra are computed and drawn here.) |
+| `process_single_KineticEnergy.ipynb` | Runs `batch_KineticEnergy`'s per-run step for **one** run from a PIV `.mat` — **identical** combined `.npz`, two-panel figure and summary row to the batch. `PIV_FILENAME` (local, always used) selects the `.mat`; a band-passed one (`..._bp<lo>-<hi>Hz.mat`) has its `_bp<lo>-<hi>Hz` tag appended to every output. |
 | `single_Velocity.ipynb` | Viewer: reads one `VelocityFFT` `.npz`, redraws the velocity spectrum + polarization, prints peaks and dimensionless numbers. |
-| `reprocess_single_Velocity.ipynb` | Runs `batch_Velocity`'s per-run step for **one** run **from the `.mat`** (not the `.npz`) — identical `.npz`, figures and summary row to the batch; `OVERWRITE_FIG` / `UPDATE_SUMMARY` switches. |
-| `plot_resonance_summary.ipynb` | Overlays one or more `KineticEnergy_summary` `.csv` (one marker/colour per file, legend shows `k0`/dphi/`f_rot`/topography) as the resonance figure vs `f*`, with `SELECT_*` filtering (value / list / `(lo,hi)` range). Also builds, from each sibling `VelocityFFT_summary`, two peak-amplitude-vs-`f_lib` figures (normalized ∣ raw): one for `f_lib`, one for `f_low` & `f_lib∓f_low`. Figures named `*overlay*` are saved in the dataset root. |
+| `process_single_Velocity.ipynb` | Runs `batch_Velocity`'s per-run step for **one** run from a PIV `.mat` — identical `.npz`, figures and summary row to the batch. `PIV_FILENAME` (local, always used) selects the `.mat`; a band-passed one has its `_bp<lo>-<hi>Hz` tag appended to every output. `OVERWRITE_NPZ` / `OVERWRITE_FIG` / `UPDATE_SUMMARY` switches. |
+| `plot_batch_Velocity.ipynb` | Redraws every run's `batch_Velocity` figures (spectrum + polarization) **from the cached `.npz`** — no `.mat`, no recompute; byte-identical to the batch figures. |
+| `plot_batch_KineticEnergy.ipynb` | Redraws every run's `batch_KineticEnergy` two-panel figure **from the cached `.npz`** — no `.mat`, no recompute; byte-identical to the batch. Physical/normalized `XLIM`/`YLIM` set the spectrum-panel limits. |
+| `plot_resonance_summary.ipynb` | Overlays one or more **dataset folders** and plots a **single** quantity vs `f*` set by `PLOT_QUANTITY` (`velocity_fft` / `mean_Ek` / `std_Ek` / `ke_fft`), saving just that figure (named after the quantity). Colour = dataset sweep, marker = run idx (filled circle + line for idx 1; open diamond/square/… scattered for repeats idx ≥ 2). `SELECT_*` / `SELECT_TOPO` filter the rows. |
 | `filter_velocity_bandpass.ipynb` | Zero-phase Butterworth band-pass of U/V between two cut-offs; writes a new **uncalibrated** `.mat`. |
 | `PIV_subset_analysis_singleExperiment.ipynb` | One run over a user time window: quiver movie (`.mp4`), `⟨Ek⟩(t)` + FFT figure, `.npz`. |
+| `make_velocity_movie.ipynb` | Reads one run's velocity from a **local** `PIV_FILENAME` `.mat` and writes an `.mp4` of the field (velocity norm `|u|` colour map) over a time window in seconds (`T_START`/`T_END`, `None` = first/last), at `OUTPUT_FPS`. A `_bp<lo>-<hi>Hz` filename is tagged onto the movie. |
+| `colormaps_single_FFTVelocity.ipynb` | For one run (local `PIV_FILENAME`): per-point `|FFT(U)|+|FFT(V)|`, then two spatial colormaps over the whole field — the peak amplitude at `f_lib`, and the band integral over `[FMIN, FMAX]` — each with a marginal of the quantity summed over x vs z. |
+| `select_ROI_quiver.py` | **Interactive, script only** (no notebook twin). Draws one run's velocity quiver in m/s on top of its background camera image, in metres, and asks you to drag the ROI rectangle. Prints the top-left / bottom-right corners in physical units, writes them into the dataset's `param_postProcessing.json` as `PTS_ROI`, and saves `ROI_selection.png` next to it with the corner coordinates drawn on the picture. |
 | `make_thumbmail_summary.ipynb` | Tiles all runs' figures into A4-wide contact-sheet PDFs, one per figure type. |
 
 ### Typical workflow
@@ -158,6 +164,9 @@ or `'FULL'`. The single-run / plotting tools pick one region locally.
 2. Open a batch notebook, set `BASE_DIR` (and `REGION`, `FIG_FORMAT`, …) in the
    config cell, *Run All*. First run in a new dataset seeds the parameter file
    and stops — edit it and re-run.
+   The calibration (`XSCALE`/`YSCALE`) has to be typed in by hand; the ROI does
+   not — run `python select_ROI_quiver.py <run_folder>` and drag the rectangle
+   (Annex B).
 3. `batch_KineticEnergy` computes the kinetic-energy time series **and** both of
    its FFT spectra in a single pass. `batch_Velocity` is independent.
 4. Inspect single runs with the `single_*` viewers; redraw the resonance curve
@@ -380,17 +389,30 @@ diamond markers), a polarization figure, the `VelocityFFT_summary_<region>.csv`,
 and dataset-level sweep colormaps (vs `f*`, `δφ`, `f_lib`). `SAVE_COLORMAP`
 toggles whether the colormaps are written.
 
-### `reprocess_single_KineticEnergy.ipynb` / `.py`
+### `process_single_KineticEnergy.ipynb` / `.py`
 
 Runs `batch_KineticEnergy`'s per-run step for **one** run (`PATH`). It reuses the
 batch's `compute_fft_per_point`, `make_fft_figure` and `build_row` verbatim, so
 the outputs are **identical** to what the batch writes for that run: the same
 combined `KineticEnergy_<region>.npz`, a pixel-identical two-panel figure, and —
-when `UPDATE_SUMMARY` is `True` — the same 38-column row inserted/replaced in
+when `UPDATE_SUMMARY` is `True` — the same 38-column row in
 `KineticEnergy_summary_<region>.csv`. `REPROCESS=False` reuses a cached `.npz`
-(exactly like the batch's skip path). This notebook subsumes the former
-`single_KineticEnergyFFT` — both `FFT(⟨Ek⟩)` and `⟨FFT(Ek)⟩` are computed and
-drawn here, so there is no longer a separate Ek-FFT viewer.
+(exactly like the batch's skip path). It subsumes the former
+`single_KineticEnergyFFT` — both `FFT(⟨Ek⟩)` and `⟨FFT(Ek)⟩` are computed here.
+
+`PIV_FILENAME` (local, **always** used — the `param_postProcessing.json` value is
+ignored) selects the `.mat`; if it is a band-passed file
+(`..._bp<lo>-<hi>Hz.mat` from `filter_velocity_bandpass`) its `_bp<lo>-<hi>Hz` tag
+is appended to every output (`KineticEnergy_<region>_bp...Hz.npz`, the figure and
+`KineticEnergy_summary_<region>_bp...Hz.csv`), so filtered results never overwrite
+the raw ones.
+Section 6 adds a **wavelet** (time-frequency) analysis on top, writing its own
+`KineticEnergyWavelet_<region>.npz` and a raw + normalized scalogram; it is a separate product and
+never reaches the summary. `PERFORM_WAVELET` switches it off — the CWT is by far
+the slowest step, so `False` is the quick way to re-run only the FFT products,
+and it leaves any wavelet files already on disk untouched. PyWavelets is only
+imported opportunistically, so with the switch off the notebook runs without it.
+
 
 ### `single_Velocity.ipynb` / `.py`
 
@@ -400,29 +422,65 @@ the peak frequencies, `f_low` significance test, and dimensionless numbers.
 `OVERWRITE_FIG` guards the spectrum figures; `UPDATE_SUMMARY` optionally pushes
 this run's row into `VelocityFFT_summary_<region>.csv`.
 
-### `reprocess_single_Velocity.ipynb` / `.py`
+### `process_single_Velocity.ipynb` / `.py`
 
-Runs `batch_Velocity`'s per-run step for **one** run, starting from the PIV
-`.mat` (not the cached `.npz`). It reuses the batch's helper, figure and
-`build_row` functions verbatim, so the outputs are **identical** to what the
-batch writes for that run: the same `VelocityFFT_<region>.npz`, pixel-identical
-spectrum and polarization figures, and the same summary row (with the `kept`
-de-duplication). The `.npz` is always rewritten; `OVERWRITE_FIG` guards the
-figure files and `UPDATE_SUMMARY` the summary row. Use `single_Velocity` when you
-only need to redraw from an existing `.npz`.
+Runs `batch_Velocity`'s per-run step for **one** run from a PIV `.mat`, reusing
+the batch's helper, figure and `build_row` functions verbatim, so the outputs are
+**identical** to what the batch writes for that run: the same
+`VelocityFFT_<region>.npz`, pixel-identical spectrum and polarization figures, and
+the same summary row (with the `kept` de-duplication). `OVERWRITE_NPZ` /
+`OVERWRITE_FIG` / `UPDATE_SUMMARY` decide what is written; use `single_Velocity`
+to only redraw from an existing `.npz`.
+
+`PIV_FILENAME` (local, **always** used — the `param_postProcessing.json` value is
+ignored) selects the `.mat`; if it is a band-passed file
+(`..._bp<lo>-<hi>Hz.mat` from `filter_velocity_bandpass`) its `_bp<lo>-<hi>Hz` tag
+is appended to **every output** (`VelocityFFT_<region>_bp...Hz.npz`, the spectrum
++ polarization figures, and `VelocityFFT_summary_<region>_bp...Hz.csv`), so
+filtered results never overwrite the raw ones.
+Section 6 adds a **wavelet** (time-frequency) analysis on top, writing its own
+`VelocityWavelet_<region>.npz` and a raw + normalized scalogram; it is a separate product and
+never reaches the summary. `PERFORM_WAVELET` switches it off — the CWT is by far
+the slowest step, so `False` is the quick way to re-run only the FFT products,
+and it leaves any wavelet files already on disk untouched. PyWavelets is only
+imported opportunistically, so with the switch off the notebook runs without it.
+
+
+### `plot_batch_Velocity.ipynb` / `.py`
+
+Reproduces `batch_Velocity`'s per-run figures **without reprocessing**: it loops
+over the runs and redraws the spectrum (`VelocityFFT_<region>`) and polarization
+(`Velocity_polarization_<region>`) figures straight from each run's cached
+`VelocityFFT_<region>.npz`, reusing the batch's `_save_fft_figure` /
+`_save_polarization_v2_figure` verbatim -- so the output is byte-identical to the
+batch. Only plotting options apply (`FIG_FORMAT`, `LOGX`, `LOGY`); nothing is
+recomputed and no `.npz`/summary is written. `OVERWRITE=False` skips runs whose
+figures already exist.
 
 ### `plot_resonance_summary.ipynb` / `.py`
 
-Cross-dataset overlays. Loads one or more `KineticEnergy_summary` files (one
-marker/colour each; legend shows `k0`, topography, `δφ`, `f_rot`) and draws the
-resonance figure (mean/std `Ek` vs `f*`). From each sibling `VelocityFFT_summary`
-it builds the peak-amplitude-vs-`f_lib` figures (`f_lib`; and `f_low`,
-`f_lib∓f_low` with `NaN` amplitudes shown as squares on the y-floor, markers
-only). From the same combined `KineticEnergy_summary` it draws the Ek-spectrum
-amplitude at `2·f_lib`. `SELECT_*` filter by value / list / `(lo,hi)` range;
-`SELECT_TOPO` is one of `'all'`, `'bottom only'`, `'top and bottom'`. Overlay
-figures are saved in the project root.
+Cross-dataset overlays of **one** quantity vs `f* = f_lib/f_rot`. `SUMMARY_FILES`
+is a list of **dataset folders**; each must hold `KineticEnergy_summary_<region>.csv`
+and `VelocityFFT_summary_<region>.csv` (both are loaded, so any quantity works).
+`PLOT_QUANTITY` chooses what is plotted:
 
+- `'velocity_fft'` — normalised velocity FFT amplitude at `f_lib` (`amp_flib_star`);
+- `'mean_Ek'` — mean kinetic energy (`mean_Ekin_star`);
+- `'std_Ek'` — std of kinetic energy (`std_Ekin_star`);
+- `'ke_fft'` — per-point `⟨FFT(Ek)⟩` amplitude at `2·f_lib` (`amp_2flib_star`).
+
+Colour encodes the (dataset, `f_rot`, `dphi`) sweep; the **run index** sets the
+marker — run idx 1 is a connected curve with filled circles, each higher idx
+(repeats of an identical `f_rot/f_lib/dphi` run) is drawn as **scattered open
+markers with no line** (diamond for 2, square for 3, …), in the sweep's colour.
+The legend keeps both the run information and the run idx. `SELECT_FROT/FLIB/FSTAR/DPHI`
+(value / list / `(lo, hi)` range) and `SELECT_TOPO` (`'all'` / `'bottom only'` /
+`'top and bottom'`) filter the rows.
+
+**Only the selected figure is saved**, `<quantity>_vs_fstar_<tag>[_filtered].<fmt>`
+(the quantity is in the name). A single dataset → written in that dataset folder
+with the region tag; several → the project root with the `overlay` tag; an active
+`SELECT_*` filter appends `_filtered`.
 ### `filter_velocity_bandpass.ipynb` / `.py`
 
 Zero-phase Butterworth band-pass of `U/V` between two cut-off frequencies; writes
@@ -434,6 +492,98 @@ then post-process.
 One run over a user-chosen time window: a quiver movie (`.mp4`), an `⟨Ek⟩(t)` +
 FFT figure, and a `.npz` — for zooming into a transient.
 
+
+### `make_velocity_movie.ipynb` / `.py`
+
+Writes an `.mp4` of one run's velocity field (the velocity norm `|u|` as a colour map) straight from a PIV `.mat`. `PIV_FILENAME` is a
+**local** constant (not from `param_postProcessing.json`) so it can point at a
+raw or a band-passed `.mat`; calibration, the ROI and the log name still come
+from the dataset parameters, and the velocity honours `VALIDATE_VELOCITY` via
+`load_piv`. `T_START`/`T_END` are in seconds (`None` -> first/last),
+`OUTPUT_FPS` is the playback rate, `MAX_FRAMES`/`MAG_CLIM` control the drawing, and `REGION`/`SHOW_ROI_BOX` zoom to / outline the ROI. The movie is
+`PostProcessing/velocity_movie_<region>_t<start>-<end>s[_bp<lo>-<hi>Hz].mp4`; the
+`_bp` tag (when the `.mat` is band-passed) keeps it from overwriting the raw movie.
+### `colormaps_single_FFTVelocity.ipynb` / `.py`
+
+Spatial FFT maps for **one** run. It computes the single-sided FFT amplitude of
+`U(t)` and `V(t)` at **every grid point** (NaN-in-time interpolated per point;
+all-NaN points blank) and forms `|FFT(U)| + |FFT(V)|` per point, then draws two
+colormaps over the whole PIV field: the **peak amplitude at `f_lib`** (max within
+±`HALFWIDTH_BINS` bins) and the **band integral** `∫(|FFT(U)|+|FFT(V)|) df` over
+`[FMIN, FMAX]`. Each colormap carries a right-hand marginal of the same quantity summed over all x as a function of z (shared z axis). `PIV_FILENAME` is a local constant (raw or band-passed); the
+velocity honours `VALIDATE_VELOCITY`. `LOGC` toggles a log colour scale,
+`SHOW_ROI_BOX` overlays the ROI. Figures →
+`VelocityFFT_spatialmap_peak_flib[_bp…Hz]` and
+`VelocityFFT_spatialmap_integral_<FMIN>-<FMAX>Hz[_bp…Hz]`.
+
+### `select_ROI_quiver.py` (interactive, no notebook)
+
+Picks `PTS_ROI` by eye instead of by trial and error. Run it from a terminal —
+it opens a window and blocks, so it is deliberately **not** part of
+`ipynb_to_py.py`'s Agg twins:
+
+```
+python select_ROI_quiver.py                    # the RUN_DIR set at the top
+python select_ROI_quiver.py <run_folder>       # or any run folder
+```
+
+What it draws, all on axes in metres:
+
+- the run's **background image** (`<run>/background.mat`, `bg_img_A`), contrast-
+  stretched with `BG_CLIP` percentiles — raw PIV frames are almost black. Runs
+  recorded without one get a warning and a blank field; the picking still works.
+- the **velocity quiver** in m/s, calibrated exactly as the batch tools do
+  (`XSCALE`/`YSCALE` from the parameter file, `pulse_sep` from the acquisition
+  log, and the dataset's `VALIDATE_VELOCITY` — so the ROI is picked on the same
+  field the batch tools will analyse). `FRAME` chooses what is shown: `'rms'`
+  (default — RMS magnitude with the sign of the mean, so an oscillating flow does
+  not average itself away), `'mean'`, or an integer frame index.
+- the ROI **already in the parameter file**, dashed, for reference.
+
+The axes are clipped to the background image in both directions, and never go
+negative. The physical origin sits on the **bottom row of the PIV grid**, which
+is a few pixels above the bottom of the frame, so the raw image extent dips
+slightly below zero — a sliver `create_mask` could never select, so it is cut
+away. A drag that runs off the axes is clamped to them, so a picked ROI can
+never be negative nor reach past the image.
+
+| control | |
+|---|---|
+| drag left mouse | draw / redraw the rectangle |
+| `enter` | accept — print the corners, save them |
+| `r` | clear and start again |
+| `escape` / close window | quit, write nothing |
+
+On accept it prints
+
+```
+PTS_ROI = [[x_left, y_top], [x_right, y_bottom]]
+```
+
+— top-left corner first, bottom-right second, the order `create_mask` expects —
+and (with `SAVE_TO_PARAM`, the default) writes just that key into the dataset's
+`param_postProcessing.json`, leaving every other key and the key order alone.
+
+`SAVE_FIGURE` (also the default) saves `ROI_selection.png` **next to that
+parameter file**, in the dataset folder rather than under any one run — the ROI
+belongs to the dataset, not to the run it happened to be picked on. The corner
+coordinates are written **on the picture**: labelled at the two corners and
+spelled out as the full `PTS_ROI = [[…], […]]` line in the title, so the figure
+documents the parameter file on its own. One ROI per dataset, so one picture:
+re-picking overwrites it.
+
+`SAVE_TO_DEFAULT` is **False** on purpose: unlike the other keys, the ROI is
+genuinely per-dataset, so mirroring one dataset's rectangle into
+`param_postProcessing_default.json` would mislead the next dataset seeded from
+it. An uncalibrated run (unreadable acquisition log ⇒ positions in px) refuses to
+write, since the tools read `PTS_ROI` as metres.
+
+**Alignment.** The image extent is derived from the PIV grid's own pixel
+coordinates, not from the image size: `x = x_px·XSCALE` and
+`y = (max(y_px) − y_px)·YSCALE`, so `y = 0` sits on the bottom row of the PIV
+grid — the same origin `load_piv` gives the vectors. That is what puts the
+picture, the arrows and the saved rectangle on one set of axes.
+
 ### `make_thumbmail_summary.ipynb` / `.py`
 
 Tiles every run's figures of a given type into A4-wide contact-sheet PDFs
@@ -441,6 +591,17 @@ Tiles every run's figures of a given type into A4-wide contact-sheet PDFs
 overview.
 
 ---
+
+### `plot_batch_KineticEnergy.ipynb` / `.py`
+
+The kinetic-energy counterpart of `plot_batch_Velocity`: redraws every run's
+two-panel `KineticEnergy_FFT_<region>` figure (`<Ek>(t)` + both spectra) straight
+from the cached `KineticEnergy_<region>.npz`, reusing `batch_KineticEnergy`'s
+`save_fft_figure` verbatim -- byte-identical to the batch when the limits are
+left at `None`. `XLIM_PHYS`/`YLIM_PHYS` and `XLIM_NORM`/`YLIM_NORM` set the
+**spectrum panel** limits (physical: Hz / m^2/s^2; normalized: `f/f_rot` /
+`/E_lib`); the time-series panel stays auto. No `.mat`, no recompute, no
+`.npz`/summary written.
 
 ## Annex C — troubleshooting
 

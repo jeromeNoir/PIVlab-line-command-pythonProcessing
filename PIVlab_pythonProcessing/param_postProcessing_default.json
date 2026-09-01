@@ -26,5 +26,6 @@
   "R": 0.138,
   "H": 0.5,
   "k0": 6,
-  "nu": 1e-06
+  "nu": 1e-06,
+  "VALIDATE_VELOCITY": true
 }

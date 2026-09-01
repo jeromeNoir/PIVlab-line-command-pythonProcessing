@@ -67,7 +67,8 @@ _DEFAULT_PARAM_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # from k0 and R on load, so only k0 is stored.
 _PARAM_KEYS = ("PIV_FILENAME", "LOG_FILENAME", "XSCALE", "YSCALE", "PTS_ROI",
                "FRAMES_PER_FIELD", "UNCAL_DT", "UNCAL_FPS", "UNCAL_SCALE",
-               "FROT_DIVISOR", "FLIB_DIVISOR", "REGIONS", "R", "H", "k0", "nu")
+               "FROT_DIVISOR", "FLIB_DIVISOR", "REGIONS", "R", "H", "k0", "nu",
+               "VALIDATE_VELOCITY")
 
 
 class _Param(dict):
@@ -111,9 +112,11 @@ def _params_from_raw(raw):
     P["PTS_ROI"] = [tuple(p) for p in P["PTS_ROI"]]
     P["REGIONS"] = tuple(P["REGIONS"])
     # k and l are DERIVED from k0 and R -- recomputed so a stale value can never
-    # be used (only k0 is stored).
+    # be used (only k0 is stored). k0 == 0 means no topography (a full cylinder:
+    # top=False, bottom=False); the wavelength is then undefined, so l is NaN
+    # rather than infinite.
     P["k"] = P["k0"] * np.pi / P["R"]
-    P["l"] = 2.0 * np.pi / P["k"]
+    P["l"] = (2.0 * np.pi / P["k"]) if P["k0"] else float("nan")
     return P
 
 
@@ -186,9 +189,13 @@ _apply_params(_params_from_raw({}))
 # fallback and also supply the NaN validity pattern.
 FILTERED_NAMES = (("u_filt", "v_filt"), ("u_filtered", "v_filtered"))
 UNFILTERED_NAMES = (("u", "v"), ("u_original", "v_original"))
+# PIVlab validation map for the filtered field: 1 = valid (passed validation),
+# 2 = interpolated (rejected by validation and replaced), 0 = masked / no data.
+TYPEVECTOR_FILT_NAMES = ("typevector_filt", "typevector_filtered")
 
-_VELOCITY_VARS = ["x", "y"] + [n for pair in FILTERED_NAMES + UNFILTERED_NAMES
-                               for n in pair]
+_VELOCITY_VARS = (["x", "y"]
+                  + [n for pair in FILTERED_NAMES + UNFILTERED_NAMES for n in pair]
+                  + list(TYPEVECTOR_FILT_NAMES))
 
 
 def _first_present(mat, pairs):
@@ -222,56 +229,88 @@ def _as_grid(arr):
     return a.astype(float, copy=False)
 
 
-def load_piv(file_path):
+def load_piv(file_path, validate_velocity=None):
     """Load a PIVlab .mat file and return calibrated-ready fields.
 
-    Returns X, Y (2D grids), U, V (velocity, NaN where invalid) and nframes.
-    Axis flips / sign flips reproduce the original notebook exactly.
+    Returns X, Y (2D grids), U, V (velocity) and nframes. The axis flips / sign
+    flips (the geometry/calibration step) are unchanged and applied the same way
+    to whichever velocity is selected.
 
-    The velocity is taken from the first pair present, in this order:
-      u_filt / v_filt        -- filtered, batch export
-      u_filtered / v_filtered-- filtered, session export
-      u / v  or  u_original / v_original  -- unfiltered fallback, with a message
-    Raises ValueError (after printing) when the file holds no velocity at all.
+    `validate_velocity` (default: the module global VALIDATE_VELOCITY, set from
+    param_postProcessing.json) selects which velocity is returned:
+      True  -> the filtered / validated velocity (u_filt/v_filt, else
+               u_filtered/v_filtered), with NaN wherever the raw vector is NaN.
+      False -> the ORIGINAL velocity (u/v, else u_original/v_original) with NaN at
+               the locations that failed validation -- read from PIVlab's
+               `typevector_filt` (!= 1 means interpolated/rejected or masked). If
+               that map is absent, falls back to NaN where the filtered field is
+               NaN.
+    Raises ValueError (after printing) when the required velocity is absent.
     Both the 3-D-array and cell-array layouts are handled.
     """
-    mat = loadmat(file_path, variable_names=_VELOCITY_VARS)
+    if validate_velocity is None:
+        validate_velocity = VALIDATE_VELOCITY
 
-    names = _first_present(mat, FILTERED_NAMES)
+    mat = loadmat(file_path, variable_names=_VELOCITY_VARS)
+    filtered = _first_present(mat, FILTERED_NAMES)
     unfiltered = _first_present(mat, UNFILTERED_NAMES)
-    if names is None:
-        if unfiltered is None:
-            print("No velocity field found")
-            raise ValueError("No velocity field found in %s" % file_path)
-        print("no filtered velocity found using the unfiltered velocities")
-        names = unfiltered
 
     X_original = _as_grid(mat["x"])
     Y_original = _as_grid(mat["y"])
-    U_sel = _as_frames(mat[names[0]])
-    V_sel = _as_frames(mat[names[1]])
-
-    # Flip axes (match notebook)
     X = X_original[:, ::-1]
     Y = Y_original[::-1, :]
-    U = U_sel[::-1, ::-1, :]
-    V = V_sel[::-1, ::-1, :]
+
+    def _frames(pair):
+        return (_as_frames(mat[pair[0]])[::-1, ::-1, :],
+                _as_frames(mat[pair[1]])[::-1, ::-1, :])
+
+    if validate_velocity:
+        # Validated: the filtered field (fall back to unfiltered if absent),
+        # masked to NaN wherever the raw vector is NaN.
+        names = filtered if filtered is not None else unfiltered
+        if names is None:
+            print("No velocity field found")
+            raise ValueError("No velocity field found in %s" % file_path)
+        if filtered is None:
+            print("no filtered velocity found using the unfiltered velocities")
+        U, V = _frames(names)
+        if unfiltered is not None and unfiltered != names:
+            U_original, V_original = _frames(unfiltered)
+            if U_original.shape == U.shape:
+                mask = np.isnan(U_original) | np.isnan(V_original)
+                U[mask] = np.nan
+                V[mask] = np.nan
+    else:
+        # Original velocity, NaN where the vector failed validation. PIVlab's
+        # typevector_filt marks each vector 1 = valid, 2 = interpolated (rejected
+        # by validation), 0 = masked; so "did not pass" is typevector_filt != 1.
+        if unfiltered is None:
+            print("No unfiltered velocity field found")
+            raise ValueError("No unfiltered velocity field in %s" % file_path)
+        U, V = _frames(unfiltered)
+        tv_name = next((n for n in TYPEVECTOR_FILT_NAMES if n in mat), None)
+        if tv_name is not None:
+            TVF = _as_frames(mat[tv_name])[::-1, ::-1, :]
+            if TVF.shape == U.shape:
+                mask = TVF != 1
+                U[mask] = np.nan
+                V[mask] = np.nan
+            else:
+                print("typevector_filt shape mismatch -- validation mask skipped")
+        elif filtered is not None and filtered != unfiltered:
+            # No typevector: fall back to NaN where the filtered field is NaN.
+            U_filt, V_filt = _frames(filtered)
+            if U_filt.shape == U.shape:
+                mask = np.isnan(U_filt) | np.isnan(V_filt)
+                U[mask] = np.nan
+                V[mask] = np.nan
+        else:
+            print("no validation info found -- returning the unfiltered velocity "
+                  "as-is")
 
     nframes = U.shape[2]
-
-    # Mask wherever the un-validated vectors are NaN. Skipped when the
-    # unfiltered fields are absent, or when they are what we just loaded.
-    if unfiltered is not None and unfiltered != names:
-        U_original = _as_frames(mat[unfiltered[0]])[::-1, ::-1, :]
-        V_original = _as_frames(mat[unfiltered[1]])[::-1, ::-1, :]
-        if U_original.shape == U.shape:
-            mask = np.isnan(U_original) | np.isnan(V_original)
-            U[mask] = np.nan
-            V[mask] = np.nan
-
     Y = Y.max() - Y
     V = -V
-
     return X, Y, U, V, nframes
 
 
@@ -484,7 +523,7 @@ def _load_npz(filepath, kind):
 def read_KineticEnergy(filepath):
     """Read a KineticEnergy_timeSeries_<region>.npz and return its variables.
 
-    Loads everything written by batch_KineticEnergy / reprocess_single_KineticEnergy --
+    Loads everything written by batch_KineticEnergy / process_single_KineticEnergy --
     run, region, calibrated, dt_vel, fps, xscale, yscale, pts_ROI, npoints,
     nframes, t, Ek_frame, mean_Ekin, std_Ekin (older files may lack a few) --
     returns them as a dict {name: value}, and prints the list of what it found.
@@ -702,11 +741,14 @@ def figure_filename(stem, fmt="png", normalized=False):
 def topography_arrangement(path):
     """(top_topo, bottom_topo) for a dataset, from its folder name in `path`.
 
+    'FullCylinder' -> (False, False) (no topography, a plain cylinder);
     'TopBottom' -> (True, True); 'bottomOnly' -> (False, True); otherwise
     (nan, nan). `path` may be the dataset dir, a run dir, or any path that
     contains the dataset folder name.
     """
     low = str(path).lower()
+    if "fullcylinder" in low:              # no topography: top=False, bottom=False
+        return False, False
     if "topbottom" in low:
         return True, True
     if "bottomonly" in low:
