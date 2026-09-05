@@ -1,4 +1,4 @@
-# How to process PIV data: PIVlab (MATLAB) → Python post-processing
+ # How to process PIV data: PIVlab (MATLAB) → Python post-processing
 
 This guide covers the whole chain, in two parts:
 
@@ -347,8 +347,12 @@ Everything below lives in:
 - **Restart the kernel after editing the library.** Python caches imported
   modules, so a running kernel keeps the old version — the usual cause of
   `ImportError: cannot import name ...` for something you just added.
-- `obsolete/` holds the retired `.py` twins of these tools; the notebooks are the
-  live versions.
+- **Notebooks + auto-generated `.py` twins.** Each tool is a notebook plus a
+  `.py` twin regenerated with `python ipynb_to_py.py` (figures saved, never
+  shown; magics stripped). Edit the NOTEBOOK and regenerate — never the twin.
+- `obsolete/` holds every retired tool (the old `batch_*`/`plot_*`/
+  `colormaps_*` generation and their docs). Ignore it unless you need one
+  specific file.
 
 ## 10. Run-folder naming
 
@@ -362,49 +366,48 @@ frot0.50Hz_flib0.400Hz_dphi2deg_SS1
    └─────────────────────────────── rotation frequency f_rot [Hz]
 ```
 
-`parse_run_name()` returns `(frot_Hz, flib_Hz, dphi_deg)`; the summaries add
-`fstar = flib/frot`. The **legacy** form (`frot050_flib0400_…`, zero-padded
-integers) is still parsed, so old summary tables keep working.
+`parse_run_name()` returns `(frot_Hz, flib_Hz, dphi_deg)`; the summary adds
+`flib_star = flib/frot`. Only this decimal-Hz form is parsed — the legacy
+zero-padded form (`frot050_flib0400_…`) was retired together with the divisor
+parameters.
 
-## 11. Regions: ROI vs FULL
+## 11. Regions: ROI vs FULL — one mask, one file
 
-Every quantity can be computed over the fixed ROI rectangle (`PTS_ROI` in the
-library) or over the whole field. Each notebook sets this **locally**:
-
-| value | meaning |
-| --- | --- |
-| `REGION = 'ROI'`  | crop to `PTS_ROI` |
-| `REGION = 'FULL'` | whole field |
-| `REGION = 'BOTH'` | **batch notebooks only** — process both in one run |
-
-The region is written into **every output name** (`…_ROI.npz`, `…_FULL.png`,
-`…_summary_ROI.csv`), so the two never overwrite each other. With `'BOTH'` a
-batch produces two of everything — including two figures, which is expected, not
-a duplicate.
+`PTS_ROI` (in the dataset's `param_postProcessing.json`, in metres, **in the
+rotated frame** — see section 12) defines the analysis rectangle; pick it with
+`select_ROI_quiver.py`. Processing builds `MASK_ROI` (1 inside, NaN outside)
+and stores BOTH regions' statistics in the SAME per-run `.npz` — there are no
+per-region files or `REGION` batch options any more. The ROI-averaged spectra
+(`*_ROIaveraged`) are what the viewers and the resonance curves read; a
+rectangle that selects nothing falls back to the full field with a warning.
 
 ## 12. The notebooks
 
-Run the batches first: they create the `.npz` files the others read.
+Run `PIV_processing` first: it creates the `.npz` files every other tool
+reads.
 
-| Notebook | What it does |
+| Tool | What it does |
 | --- | --- |
-| `batch_KineticEnergy.ipynb` | **Start here.** For every run: `Ek(t) = ½⟨u²+v²⟩` over the region → `KineticEnergy_timeSeries_<region>.npz`, a summary table, and the resonance figure. |
-| `batch_KineticEnergyFFT.ipynb` | FFT of each run's `Ek(t)`, both `fft(⟨Ek⟩)` and `⟨fft(Ek)⟩`, → `KineticEnergy_FFT_<region>.png` + summary. Needs the batch above. |
-| `batch_VelocityFFT.ipynb` | Per-point velocity spectra averaged over the region + polarization → `VelocityFFT_<region>.npz`, figures, summary, and the `f*`/`δφ`/`f_lib` colormaps. |
-| `single_KineticEnergy.ipynb` | The two steps above for **one** run, with an option to refresh that run's row in the summaries. |
-| `single_KineticEnergyFFT.ipynb` / `single_VelocityFFT.ipynb` | Inspect one run's stored `.npz` interactively (no recomputation). The velocity one draws a single panel with `|FFT(U)|` and `|FFT(V)|`. |
-| `PIV_subset_analysis_singleExperiment.ipynb` | One run over a **time window**: movie of the velocity field, `Ek(t)`, and its spectrum. |
-| `filter_velocity_bandpass.ipynb` | Band-pass the velocity in time at every grid point → a filtered `.mat` beside the original. |
-| `plot_resonance_summary.ipynb` | Resonance figure from a summary `.csv`; x-axis `fstar` or `flib`, optional normalization, optional filtering by frot/flib/dphi. |
-| `make_thumbmail_summary.ipynb` | Tiles every run's figures into one contact sheet per figure type, written beside the summaries. `SOURCE_NORMALIZED` (raw vs `_normalized`) and `SOURCE_EXT` (`'png'`/`'pdf'`) pick which per-run figures to tile; missing files are reported per group. PDF sources need a raster backend (pymupdf/pypdfium2/pdf2image), else the build reports and stops. |
+| `PIV_processing.ipynb` | **Start here.** `BATCH = True` processes every run of every dataset in the `BASE_DIRS` list; `BATCH = False` only `RUN_DIR`. Each run's `.mat` is loaded once, the fields are **rotated by the dataset's `ROTATE`** (0/±90/180°, so everything downstream lives in the final frame), and the `'KE'` and `'VELOCITY'` analyses write `KineticEnergy.npz` + `Velocity.npz` per run plus one `Runs_summary.csv` per dataset. `REPROCESS_ALL = False` reuses cached `.npz`. Every stored variable is documented in `FILE_STRUCTURE_VELOCITY.md` / `FILE_STRUCTURE_ENERGY.md`. |
+| `MAPS_VELOCITY.ipynb` | Mean/std velocity maps (`MAP_COMPONENT = 'U'`, `'V'` or `'both'`), ROI overlaid, ±θ inertial-wave characteristics on the **std** panels (at `f_lib`, or at `FREQ` when set). |
+| `MAPS_FFT.ipynb` | Spatial FFT maps: amplitude of `|FFT(U)|+|FFT(V)|` at `f_lib` (with the characteristics) and the band integral over `[FMIN, FMAX]` (`PEAK_SELECT = False` → `[DELTA_F, f_lib − DELTA_F]`), each panel with its marginal profile. |
+| `PLOT_FFT.ipynb` | ROI-averaged spectra: `FFT_U + FFT_V` (velocity) and `FFT_EK` (energy) vs frequency, with the forcing guides and the stored detected peaks. |
+| `POLARIZATION.ipynb` | Polarization `P_V/P_U` from the stored per-point spectra, thresholded (`MIN_FFT_AMP` [m/s]: weaker `FFT_U`/`FFT_V` samples become NaN and drop out), against the inertial-wave relation. |
+| `PHASE_AVERAGE.ipynb` | Phase-averages `U`, `V` at the libration period (all complete periods, one bin per frame interval) -> `Velocity_phaseAveraged.npz` (`UPA`, `VPA`, `PHASE`, `N_SAMPLES` + shared header) and the phase-0 figure: velocity magnitude + quiver + ROI. |
+| `RES_CURVES.ipynb` | Resonance curves over a `BASE_DIRS` list: velocity amplitude at `f_lib` and energy amplitude at `2 f_lib` vs `f_lib` — per-dataset figures (symbols distinguish repeated `SSn` runs) plus overlay figures with mean ± std; save-only. |
+| `select_ROI_quiver.py` | Interactive ROI picker: quiver over the background image, **in the rotated frame**; writes `PTS_ROI` into the dataset's parameter file. Run it from a terminal. |
+| `READ_velocityFile.py` / `READ_energyFile.py` | Load a `.npz` and return every stored variable under its in-file name. |
 
-Common options in the config cell: `BASE_DIR` (dataset root), `REGION`,
-`REPROCESS_ALL` (recompute vs reuse cached `.npz`), and `NORMALIZE_EK`.
+The viewers (`MAPS_*`, `PLOT_FFT`, `POLARIZATION`, `PHASE_AVERAGE`) share the `BATCH` switch: `False` draws the
+single `RUN_DIR` and SHOWS the figures, `True` sweeps every run of `BASE_DIR`
+and only saves them. Other common options: `SAVE`, `FIG_FORMAT`
+(`'png'`/`'pdf'`).
 
-**Normalization.** `NORMALIZE_EK = True` divides `Ek` by the libration kinetic
-energy scale `(δφ[rad]·2π·f_lib·R)²` (`R` = cylinder radius, in the library),
-making it dimensionless and adding `_normalized` to the figure name. Only the
-figures are normalized — the `.npz` and summary tables stay in physical units.
+**DIM / NODIM.** Every viewer figure is written twice: `_DIM` in physical
+units and `_NODIM` non-dimensional, where every quantity is simply starred
+(`x*`, `z*`, `f*`, amplitude`*`; lengths / `R`, frequencies / `f_rot`,
+velocities / `U₀`, energies / `EK_SCALE`) with no unit suffixes. Nothing in
+the `.npz` files is ever stored normalised.
 
 ## 13. Where the outputs go
 
@@ -412,30 +415,71 @@ Per run, in `<run>/PostProcessing/`:
 
 | File | From |
 | --- | --- |
-| `KineticEnergy_timeSeries_<region>.npz` | `batch_KineticEnergy` |
-| `KineticEnergy_FFT_<region>.png` | `batch_KineticEnergyFFT` |
-| `VelocityFFT_<region>.npz` / `.png`, `Velocity_polarization_<region>.png` | `batch_VelocityFFT` |
+| `KineticEnergy.npz`, `Velocity.npz` | `PIV_processing` |
+| `MAPS_VELOCITY_DIM/_NODIM.png` | `MAPS_VELOCITY` |
+| `MAPS_FFT_DIM/_NODIM.png` | `MAPS_FFT` |
+| `PLOT_FFT_velocity_DIM/_NODIM.png`, `PLOT_FFT_energy_DIM/_NODIM.png` | `PLOT_FFT` |
+| `POLARIZATION_DIM/_NODIM.png` | `POLARIZATION` |
+| `Velocity_phaseAveraged.npz`, `PHASE_AVERAGE_DIM/_NODIM.png` | `PHASE_AVERAGE` |
 
 At the **dataset root** (next to the run folders):
 
 | File | From |
 | --- | --- |
-| `KineticEnergy_summary_<region>.csv` | `batch_KineticEnergy` |
-| `KineticEnergyFFT_summary_<region>.csv` | `batch_KineticEnergyFFT` |
-| `VelocityFFT_summary_<region>.csv` | `batch_VelocityFFT` |
-| `KineticEnergy_vs_<xaxis>_<region>[_normalized].png` | resonance figure |
-| `Thumbnails_<figure>.png` | `make_thumbmail_summary` |
+| `Runs_summary.csv` | `PIV_processing` |
+| `RES_CURVE_ENERGY.png`, `RES_CURVE_VELOCITY.png` | `RES_CURVES` |
+| `ROI_selection.png` | `select_ROI_quiver` |
+
+At the datasets' **common parent**, when `RES_CURVES` is given several
+datasets: `RES_CURVE_ENERGY_ALL.png`, `RES_CURVE_VELOCITY_ALL.png` (one curve
+per dataset, repeated runs collapsed to mean ± std).
 
 > Summaries are written as **`.csv` only**. Excel output was removed — some
 > pandas/openpyxl versions silently wrote boolean columns (`processed`,
 > `calibrated`) as blank cells.
 
+### The dataset summary — `Runs_summary.csv`
+
+`PIV_processing` maintains **one** summary CSV per
+dataset (`Runs_summary.csv` at the dataset root — it replaces the earlier
+`KineticEnergy_summary.csv` / `Velocity_summary.csv` pair). One row per run,
+holding only run parameters and dimensionless control parameters — the
+measured quantities stay in the per-run `.npz` files. A batch replaces the
+rows of the runs it processed and keeps every other row; the single-run mode
+(`BATCH = False`) does the same for its one run, so both modes create/update
+the same file.
+
+Columns: `run`, `run indx`, `processed`, `k0`, `lambda`, `topo_top`,
+`topo_bottom`, `frot(Hz)`, `flib(Hz)`, `dphi(deg)`, `flib_star`
+(= `flib/frot`), `Pulse_sep(s)` (PIV pulse separation), `PIV_fps(Hz)`,
+`nframe`, `U_SCALE (m/s)`, `V_SCALE (m/s)`, `LENGTH_SCALE`, `TIME_SCALE`,
+and the dimensionless control parameters below.
+
+**Dimensionless control parameters** (computed by `control_parameters` in
+`piv_postprocessing_lib` from the run's forcing — `frot`, `flib`, `dphi` —
+and the dataset constants `R`, `H`, `nu`, `k0`), with
+`U_SCALE = 2π·flib·R·dphi[rad]` the peak libration wall velocity:
+
+| column | definition |
+| --- | --- |
+| `lambda` | topography wavelength `2·R / k0` [m] |
+| `Ekman` | `nu / (2π·frot·H²)` |
+| `BL thickness (m)` | `H·√Ekman` |
+| `Rossby` | `U_SCALE / (2π·frot·R)` |
+| `TOPO Rossby` | `Rossby · R / lambda` |
+| `TOPO Reynolds` | `U_SCALE · lambda / nu` |
+| `BL Reynolds` | `U_SCALE · BL thickness / nu` |
+
+Anything requiring `frot` is NaN when `frot` is unknown or zero; the TOPO
+numbers are NaN for a full cylinder (`k0 = 0`, `lambda` undefined).
+
 ## 14. Library reference — `piv_postprocessing_lib.py`
 
 **Constants** — `PIV_FILENAME`, `LOG_FILENAME`, `XSCALE`/`YSCALE` (m/px),
-`PTS_ROI` (ROI corners in metres), `FRAMES_PER_FIELD`,
-`FROT_DIVISOR`/`FLIB_DIVISOR` (legacy names), `REGIONS`, `R` (cylinder radius, m),
-`H` (container height, m), `k0` (dimensionless azimuthal wavenumber = 6),
+`ROTATE` (rotation applied to the PIV fields by `PIV_processing` and
+`select_ROI_quiver`, deg: 0, ±90 or 180),
+`PTS_ROI` (ROI corners in metres), `FRAMES_PER_FIELD`, `REGIONS`, `R` (cylinder radius, m),
+`H` (container height, m), `k0` (dimensionless azimuthal wavenumber),
 `nu` (kinematic viscosity, m²/s), `UNCAL_*` fallbacks. The library defines **none**
 of these as literals — they are loaded at import from
 `param_postProcessing_default.json` (next to the notebooks) and overridden per
@@ -452,38 +496,38 @@ module globals so the library's own helpers use the dataset's values;
 `write_paramPostprocessing(base_dir, overwrite=False)` writes a fresh JSON from
 the defaults.
 
-**Normalisation (`_star` columns/arrays).** Every summary row and per-run `.npz`
-carries both raw and normalised quantities. Frequencies are divided by `f_rot`
-(`flib_star`, `f_peak_star`, `f_low_star`, and the `f_star` array), velocities by
-`U0` (`amp_u_star` = `amp_u`/`U0`), and kinetic energy by `U0²`
-(`mean_Ekin_star`, `Ek_frame_star`), with `U0 = libration_velocity_scale`. Each
-summary also gets the eight `dimensionless_numbers` columns.
+**Nothing is stored calibrated or normalised.** Every `.npz` field is in
+native PIV units (px, px/frame, frames, 1/frame) together with the
+multiplicative calibration factors (`XCAL`, `YCAL`, `TCAL`, `UCAL`, `VCAL`,
+`ECAL`, `FCAL`; native → physical) and the non-dimensional divisors
+(`U_SCALE = U₀ = 2π·f_lib·R·δφ[rad]`, `V_SCALE`, `LENGTH_SCALE = R`,
+`TIME_SCALE = 1/f_rot`, `F_SCALE = f_rot`, `EK_SCALE`). The viewers calibrate
+on the fly; the summary carries the `control_parameters` columns (section
+13).
 
 **Figures: format + two versions.** Each figure-producing notebook has a
-`FIG_FORMAT = 'png'` config option (`'png'` or `'pdf'`) and writes **every figure
-twice** — a raw version and a `_normalized` one (built via
-`figure_filename(stem, fmt, normalized=...)`). The normalised spectra use
-`f / f_rot` on the frequency axis and divide amplitude by `U0` (velocity) or `U0²`
-(kinetic energy); the velocity colormaps' normalised version is the `f/f_rot`
-frequency axis. So e.g. `VelocityFFT_ROI.png` now comes with
-`VelocityFFT_ROI_normalized.png`.
+`FIG_FORMAT` option (`'png'`/`'pdf'`) and writes every figure twice via
+`figure_filename(stem, fmt, normalized=...)`: `<stem>_DIM.<fmt>` (physical
+units) and `<stem>_NODIM.<fmt>` (non-dimensional, starred labels — section
+12).
 
 **Key functions:**
 
 | Function | Purpose |
 | --- | --- |
-| `load_piv(path)` | `X, Y, U, V, nframes` from a PIVlab `.mat`. Prefers `u_filt`/`v_filt`, then `u_filtered`/`v_filtered`; falls back to the unfiltered `u`/`v` (or `u_original`/`v_original`) with a printed message, and prints *"No velocity field found"* if there is none. Handles both the 3-D-array and cell-array layouts. |
-| `read_acquisition_params(log)` | `(dt_pulse, fps, ok)` from `acquisition_log.txt`. **`fps = cam_fps / 2`** — PIVlab pairs images, so one velocity field is produced every two camera frames. |
-| `region_fields(...)`, `region_tag`, `regions_to_run` | ROI/FULL cropping, filename tag, and `'BOTH'` expansion. |
-| `parse_run_name`, `parse_frot`, `parse_flib` | Physical parameters from a folder name (both naming conventions). |
-| `compute_fft`, `amp_from_rfft`, `peak_freq` | One-sided amplitude spectrum (`|FFT|·2/N`), peak ignoring DC. |
-| `fft_axis_limits(freq, amp, frot, flib)` | Axis limits for spectra: x to `max(4·f_rot, 4·f_lib)`, y to decade bounds. |
-| `libration_ke_scale(dphi_deg, flib)` | `(δφ[rad]·2π·f_lib·R)²`, the Ek normalization scale. |
-| `libration_velocity_scale(flib, dphi_deg)` | `U0 = 2π·f_lib·R·δφ[rad]`, the velocity scale for `U_star = U/U0` (its square is `libration_ke_scale`). |
-| `dimensionless_numbers(frot, flib, dphi)` | Dict of the run's dimensionless numbers — `E`, `E_l` (Ekman, height/wavelength), `delta_nu_m` (viscous BL), `U0_mps`, `Ro`, `Re`, `Re_l`, `Re_bl` — added to every summary row. |
-| `figure_filename(stem, fmt, normalized)` | `'<stem>[_normalized].<fmt>'` — the shared figure-naming/format helper (`fmt` = `'png'`/`'pdf'`). |
-| `read_KineticEnergy(path)`, `read_VelocityFFT(path)` | Load an output `.npz`, print its variables, return them as a dict. |
-| `calibrate`, `create_mask`, `extract_roi`, `resolve_npz`, `compute_polarization` | Supporting helpers. |
+| `load_piv(path)` | `X, Y, U, V, nframes` from a PIVlab `.mat`. Prefers `u_filt`/`v_filt`, then `u_filtered`/`v_filtered`; falls back to the unfiltered `u`/`v` (or `u_original`/`v_original`) with a printed message. Handles both the 3-D-array and cell-array layouts; `VALIDATE_VELOCITY` picks filtered vs original-with-NaN. |
+| `rotate_fields(X, Y, U, V, rotate)` | The dataset's `ROTATE` applied to freshly loaded fields — 180: `max(x)−x`, `max(z)−z`, `−u`, `−v`; −90: `max(z)−z`, `x`, `−v`, `u`; +90: `z`, `max(x)−x`, `v`, `−u` (±90 also transpose the arrays). Shared by `PIV_processing` and `select_ROI_quiver`. |
+| `read_acquisition_params(log)` | `(dt_pulse, fps, ok)` from `acquisition_log.txt`. **`fps = cam_fps / FRAMES_PER_FIELD`** — PIVlab pairs images, so one velocity field per two camera frames. |
+| `parse_run_name`, `parse_frot`, `parse_flib` | Physical parameters from a folder name (decimal-Hz form only). |
+| `peak_freq`, `amp_at_freq`, `peak_freq_in_band` | Spectrum maximum (ignoring DC), amplitude at a target frequency, peak inside a band. |
+| `fft_guide_lines(frot, flib, f_low)` | The dashed guide lines (`f_rot`, `f_lib`, `2 f_lib`, `f_low` and its sidebands) shared by the spectra viewers. |
+| `fft_axis_limits(freq, amps, frot, flib)` | Axis limits for spectra: x to `max(4·f_rot, 4·f_lib)`, y to decade bounds. |
+| `libration_velocity_scale(flib, dphi)` / `libration_ke_scale(dphi, flib)` | `U₀ = 2π·f_lib·R·δφ[rad]` and its square. |
+| `control_parameters(frot, flib, dphi)` | The summary's dimensionless control parameters (section 13). |
+| `dimensionless_numbers(frot, flib, dphi)` | The older `E`, `E_l`, `delta_nu_m`, `U0_mps`, `Ro`, `Re`, `Re_l`, `Re_bl` set, printed by the viewers. |
+| `figure_filename(stem, fmt, normalized)` | `'<stem>_DIM.<fmt>'` / `'<stem>_NODIM.<fmt>'` — the shared figure-naming helper (`fmt` = `'png'`/`'pdf'`). |
+| `topography_arrangement(path)` | `(top_topo, bottom_topo)` from the dataset folder name. |
+| `resolve_npz`, `create_mask`, `compute_polarization` | Supporting helpers. |
 
 ## 15. Troubleshooting (Python)
 
@@ -495,6 +539,6 @@ frequency axis. So e.g. `VelocityFFT_ROI.png` now comes with
 | `no filtered velocity found using the unfiltered velocities` | Normal message: the `.mat` has no `u_filt`/`u_filtered`, so raw `u`/`v` were used. |
 | `No velocity field found` | The `.mat` holds no velocity at all — wrong file, or PIV never ran. |
 | Batch reports every run as `[skip] no PIVlab_results_uncalibrated.mat` | The `.mat` is named differently in those folders; rename it or change `PIV_FILENAME`. |
-| Two near-identical figures from a batch | `REGION = 'BOTH'` — one is ROI, the other FULL (see the bold heading on each). |
-| A summary row named `obsolete` with NaNs | The batch treats every sub-folder as a run; non-run folders show up as unprocessed rows and are dropped from the plots. |
-| `f*` looks wrong / NaN | The folder name does not match section 10, so `frot`/`flib` could not be parsed. |
+| `[warn] PTS_ROI selects nothing -> ROI mask covers the FULL field` | The ROI rectangle lies outside the (rotated) field — re-pick it with `select_ROI_quiver`, which works in the rotated frame. |
+| A summary row with `processed = False` and NaNs | The batch treats every sub-folder as a run; non-run folders show up as unprocessed rows. |
+| `flib_star` looks wrong / NaN | The folder name does not match section 10, so `frot`/`flib` could not be parsed (the legacy zero-padded names are no longer accepted). |

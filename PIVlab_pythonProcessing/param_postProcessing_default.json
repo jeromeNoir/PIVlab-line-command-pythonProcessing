@@ -3,6 +3,7 @@
   "LOG_FILENAME": "acquisition_log.txt",
   "XSCALE": 0.00012323,
   "YSCALE": 0.00012323,
+  "ROTATE": 180,
   "PTS_ROI": [
     [
       0.02002585173778408,
@@ -17,8 +18,6 @@
   "UNCAL_DT": 1.0,
   "UNCAL_FPS": 1.0,
   "UNCAL_SCALE": 1.0,
-  "FROT_DIVISOR": 100.0,
-  "FLIB_DIVISOR": 1000.0,
   "REGIONS": [
     "ROI",
     "FULL"

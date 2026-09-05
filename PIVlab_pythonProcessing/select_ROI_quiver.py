@@ -32,6 +32,12 @@ Coordinate convention (identical to every other tool here)
 so the image extent is computed from the PIV grid's own pixel coordinates rather
 than from the image size -- that is what keeps the picture and the vectors, and
 hence the saved ROI, on the same axes as load_piv's output.
+
+The dataset's ROTATE (param_postProcessing.json; 0, 90, 180 or -90 deg) is
+applied to the fields with the library's `rotate_fields` -- the SAME
+transformation PIV_processing applies before writing the .npz -- and the
+background image is rotated with them, so the rectangle is picked, shown and
+saved in the ROTATED frame the tools analyse.
 """
 import json
 import os
@@ -55,7 +61,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
 
 from piv_postprocessing_lib import (load_piv, read_acquisition_params,
-                                    read_paramPostprocessing)
+                                    read_paramPostprocessing, rotate_fields)
 
 # ----------------------------------------------------------------------
 # USER SETTINGS
@@ -79,7 +85,7 @@ FRAME = 'rms'
 # the ROI is then picked on the same field the batch tools will analyse).
 VALIDATE_VELOCITY = None
 
-QUIVER_SKIP = 3          # draw every n-th vector in each direction
+QUIVER_SKIP = 1         # draw every n-th vector in each direction
 QUIVER_SCALE = None      # None -> matplotlib autoscale; a number -> m/s per axis-width
 QUIVER_COLOR = 'yellow'  # arrows sit on a grey image, so keep them bright
 QUIVER_WIDTH = 0.0022    # shaft width, in axes fractions
@@ -166,6 +172,26 @@ def image_extent(img_shape, x_px, y_px, xscale, yscale):
     return left, right, bottom, top
 
 
+def rotate_image(img, extent, rotate, x_max, z_max):
+    """Rotate a background image + its imshow extent by the dataset's ROTATE,
+    consistently with rotate_fields' coordinate mapping (origin='upper').
+
+    x_max, z_max are the PIV grid maxima in the extent's units -- the same
+    offsets rotate_fields uses to keep the rotated coordinates positive."""
+    left, right, bottom, top = extent
+    rotate = int(rotate)
+    if rotate == 0:
+        return img, extent
+    if rotate == 180:                 # (x, z) -> (max(x)-x, max(z)-z)
+        return np.rot90(img, 2), (x_max - right, x_max - left,
+                                  z_max - top, z_max - bottom)
+    if rotate == -90:                 # (x, z) -> (max(z)-z, x)
+        return np.rot90(img, 1), (z_max - top, z_max - bottom, left, right)
+    if rotate == 90:                  # (x, z) -> (z, max(x)-x)
+        return np.rot90(img, 3), (bottom, top, x_max - right, x_max - left)
+    raise ValueError("ROTATE must be 0, 90, 180 or -90 deg, got %r" % rotate)
+
+
 def select_frame(U, V, frame):
     """Reduce the (ny, nx, nframes) velocity stack to the single field to draw."""
     if frame == 'mean':
@@ -226,13 +252,19 @@ def main(run_dir):
     x_px, y_px = pixel_grid(piv_file)
     X, Y, U, V, nframes = load_piv(piv_file, validate_velocity=VALIDATE_VELOCITY)
 
-    # Calibrate exactly as the batch tools do: positions -> m, velocities -> m/s.
-    X = xscale * X
-    Y = yscale * Y
+    # Calibrate exactly as the batch tools do: positions -> m, velocities ->
+    # m/s -- still in the camera frame (drawn on the LEFT panel).
+    X_raw = xscale * X
+    Y_raw = yscale * Y
     U = xscale * U / dt_vel
     V = yscale * V / dt_vel
+    u_raw, v_raw, frame_label = select_frame(U, V, FRAME)
 
-    u, v, frame_label = select_frame(U, V, FRAME)
+    # Rotate into the final frame, exactly as PIV_processing does before it
+    # writes the .npz -- the ROI is picked in that frame (RIGHT panel).
+    # Rotating the reduced field is identical to reducing the rotated stack.
+    ROTATE = int(P.ROTATE)
+    X, Y, u, v = rotate_fields(X_raw, Y_raw, u_raw, v_raw, ROTATE)
     speed = np.hypot(u, v)
 
     validated = P.VALIDATE_VELOCITY if VALIDATE_VELOCITY is None else VALIDATE_VELOCITY
@@ -241,14 +273,15 @@ def main(run_dir):
     print("velocity     : %s" % ("filtered / validated" if validated else
                                  "original, rejected vectors NaN"))
     print("frames       : %d at %.4g Hz   (dt_pulse = %.4g s)" % (nframes, fps, dt_vel))
-    print("field shown  : %s" % frame_label)
+    print("field shown  : %s   (ROTATE = %g deg)" % (frame_label, ROTATE))
     print("x range      : %.4f .. %.4f %s" % (np.nanmin(X), np.nanmax(X), pos_unit))
     print("y range      : %.4f .. %.4f %s" % (np.nanmin(Y), np.nanmax(Y), pos_unit))
     print("speed        : median %.4g, max %.4g %s"
           % (np.nanmedian(speed), np.nanmax(speed), vel_unit))
 
     # ------------------------------------------------------------------
-    # 2. Figure: background image + quiver, both in physical units
+    # 2. Figure: background image + quiver in the ROTATED frame (the one the
+    #    tools analyse, where the ROI is picked).
     # ------------------------------------------------------------------
     fig, ax = plt.subplots(figsize=(11, 7), dpi=110)
 
@@ -259,10 +292,15 @@ def main(run_dir):
                   float(np.nanmin(Y)), float(np.nanmax(Y)))
         print("[warn] %s -- drawing the vectors on a blank field" % bg_name)
     else:
-        extent = image_extent(img.shape, x_px, y_px, xscale, yscale)
         vmin = vmax = None
         if BG_CLIP is not None and img.ndim == 2:
             vmin, vmax = np.percentile(img[np.isfinite(img)], BG_CLIP)
+        # The image rotated into the frame the tools analyse, sharing
+        # rotate_fields' positive-offset convention (grid maxima).
+        extent_raw = image_extent(img.shape, x_px, y_px, xscale, yscale)
+        img, extent = rotate_image(img, extent_raw, ROTATE,
+                                   float(np.nanmax(X_raw)),
+                                   float(np.nanmax(Y_raw)))
         ax.imshow(img, cmap=BG_CMAP, origin="upper", zorder=0, vmin=vmin, vmax=vmax,
                   extent=extent)
         print("background   : %s  %s" % (bg_name, img.shape))
@@ -275,7 +313,7 @@ def main(run_dir):
     ref = float(np.nanmedian(speed))
     if np.isfinite(ref) and ref > 0:
         ref = 10.0 ** np.floor(np.log10(ref))
-        ax.quiverkey(q, 0.90, 1.03, ref, "%g %s" % (ref, vel_unit),
+        ax.quiverkey(q, 0.88, -0.10, ref, "%g %s" % (ref, vel_unit),
                      labelpos="E", coordinates="axes")
 
     # The ROI currently in the parameter file, for reference.
@@ -284,11 +322,10 @@ def main(run_dir):
                                fill=False, ec="deepskyblue", ls="--", lw=1.2, zorder=4,
                                label="PTS_ROI in the parameter file"))
 
-    # Show exactly the background image, and nothing below zero. The physical
-    # origin sits on the BOTTOM ROW OF THE PIV GRID, which is a few pixels above
-    # the bottom of the frame, so the raw image extent dips slightly negative --
-    # a sliver the tools cannot address anyway (create_mask would never select
-    # it), so it is clipped away rather than shown.
+    # Show exactly the background image, and nothing below zero: the rotation
+    # keeps coordinates positive (0 at the left/bottom of the PIV grid), so any
+    # sliver of image dipping negative lies outside the grid -- create_mask
+    # could never select it -- and is clipped away rather than shown.
     left, right, bottom, top = extent
     xlim = (max(0.0, min(left, right)), max(left, right))
     ylim = (max(0.0, min(bottom, top)), max(bottom, top))
@@ -299,9 +336,9 @@ def main(run_dir):
 
     ax.set_xlabel("x [%s]" % pos_unit)
     ax.set_ylabel("y [%s]" % pos_unit)
-    ax.set_title("%s  --  %s\ndrag a rectangle, then press ENTER to accept "
-                 "(r = redo, esc = quit)" % (os.path.basename(run_dir), frame_label),
-                 fontsize=10)
+    ax.set_title("%s  --  %s  (ROTATE = %g deg)\ndrag a rectangle, then press "
+                 "ENTER to accept (r = redo, esc = quit)"
+                 % (os.path.basename(run_dir), frame_label, ROTATE), fontsize=10)
     ax.set_aspect("equal")
     ax.legend(loc="lower right", fontsize=8, framealpha=0.7)
 
@@ -401,8 +438,9 @@ def main(run_dir):
                     bbox=label_box, zorder=6)
 
         ax.legend(loc="upper right", fontsize=8, framealpha=0.7)
-        ax.set_title("%s  --  %s\nPTS_ROI = [[%.6f, %.6f], [%.6f, %.6f]]  %s"
-                     % (os.path.basename(run_dir), frame_label,
+        ax.set_title("%s  --  %s  (ROTATE = %g deg)\nPTS_ROI = [[%.6f, %.6f], "
+                     "[%.6f, %.6f]]  %s"
+                     % (os.path.basename(run_dir), frame_label, ROTATE,
                         x_left, y_top, x_right, y_bottom, pos_unit), fontsize=10)
 
         # Next to param_postProcessing.json, not in the run's PostProcessing/:

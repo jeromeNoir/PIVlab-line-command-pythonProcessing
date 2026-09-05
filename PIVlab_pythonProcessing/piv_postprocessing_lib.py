@@ -65,9 +65,10 @@ _DEFAULT_PARAM_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 # The keys stored in a parameter file. k (= k0*pi/R) and l (= 2*pi/k) are DERIVED
 # from k0 and R on load, so only k0 is stored.
-_PARAM_KEYS = ("PIV_FILENAME", "LOG_FILENAME", "XSCALE", "YSCALE", "PTS_ROI",
+_PARAM_KEYS = ("PIV_FILENAME", "LOG_FILENAME", "XSCALE", "YSCALE",
+               "ROTATE", "PTS_ROI",
                "FRAMES_PER_FIELD", "UNCAL_DT", "UNCAL_FPS", "UNCAL_SCALE",
-               "FROT_DIVISOR", "FLIB_DIVISOR", "REGIONS", "R", "H", "k0", "nu",
+               "REGIONS", "R", "H", "k0", "nu",
                "VALIDATE_VELOCITY")
 
 
@@ -174,8 +175,8 @@ def read_paramPostprocessing(base_dir, apply=True):
     return P
 
 
-# Populate the module globals (XSCALE, PTS_ROI, FRAMES_PER_FIELD, the divisors,
-# REGIONS, R, H, k0, k, l, nu, ...) from the default file at import, so the
+# Populate the module globals (XSCALE, PTS_ROI, FRAMES_PER_FIELD, REGIONS,
+# R, H, k0, k, l, nu, ...) from the default file at import, so the
 # helpers have parameter values even before -- or without -- a dataset file being
 # read. read_paramPostprocessing(BASE_DIR) later overrides them per dataset.
 _apply_params(_params_from_raw({}))
@@ -227,6 +228,35 @@ def _as_grid(arr):
     if a.ndim == 3:                             # stored per frame; grid is constant
         return a[:, :, 0].astype(float, copy=False)
     return a.astype(float, copy=False)
+
+
+def rotate_fields(X, Y, U, V, rotate):
+    """Apply the dataset's ROTATE (deg) to freshly loaded PIV fields.
+
+    X, Y are the grid, U, V the velocities, (ny, nx[, nt]); any units (the
+    rotation is applied before calibration by every tool). The max() offsets
+    keep the rotated coordinates POSITIVE, 0 at the new left/bottom edge:
+      rotate = 0   : unchanged;
+      rotate = 180 : x -> max(x)-x, z -> max(z)-z, u -> -u, v -> -v;
+      rotate = -90 : x -> max(z)-z, z -> x,        u -> -v, v -> u;
+      rotate = +90 : x -> z,        z -> max(x)-x, u -> v,  v -> -u.
+    For +/-90 every array is also transposed so the storage convention is
+    kept (axis 0 <-> z/rows, axis 1 <-> x/columns); the calibration factors
+    are NOT swapped, which is exact only while XSCALE == YSCALE.
+    """
+    rotate = int(rotate)
+    if rotate == 0:
+        return X, Y, U, V
+    x_max = np.nanmax(X)
+    z_max = np.nanmax(Y)
+    if rotate == 180:
+        return x_max - X, z_max - Y, -U, -V
+    _T = lambda A: np.ascontiguousarray(np.swapaxes(A, 0, 1))
+    if rotate == -90:
+        return _T(z_max - Y), _T(X), _T(-V), _T(U)
+    if rotate == 90:
+        return _T(Y), _T(x_max - X), _T(V), _T(-U)
+    raise ValueError("ROTATE must be 0, 90, 180 or -90 deg, got %r" % rotate)
 
 
 def load_piv(file_path, validate_velocity=None):
@@ -438,33 +468,24 @@ def read_acquisition_params(log_path):
     return UNCAL_DT, UNCAL_FPS, False
 
 
-def parse_freq_token(name, tag, divisor):
+def parse_freq_token(name, tag):
     """Frequency [Hz] carried by a folder-name token.
 
-    The current naming states the value in Hz: 'frot0.50Hz' -> 0.5. The legacy
-    naming used a zero-padded integer: 'frot050' -> 050/divisor -> 0.5. The Hz
-    form is tried first, and the legacy form is still accepted so that older
-    summary tables (which store the old run names) keep parsing.
-
-    NaN if the token is absent. Note the legacy pattern would misread an Hz name
-    ('frot0.50Hz' -> 'frot0' -> 0.0), which is why order matters here.
+    The standardized naming states the value in decimal Hz: 'frot0.50Hz' -> 0.5.
+    NaN if the token is absent.
     """
     m = re.search(r"%s([\d.]+)Hz" % tag, name)
-    if m:
-        return float(m.group(1))
-    m = re.search(r"%s(\d+)" % tag, name)
-    return float(m.group(1)) / divisor if m else np.nan
+    return float(m.group(1)) if m else np.nan
 
 
 def parse_run_name(name):
     """Parse frot/flib (Hz) and dphi (deg) from a folder name.
 
-    e.g. 'frot0.50Hz_flib0.400Hz_dphi2.5deg_SS1' -> (0.5, 0.4, 2.5), and the
-    legacy 'frot050_flib0400_dphi2.5deg_SS1' gives the same.
+    e.g. 'frot0.50Hz_flib0.400Hz_dphi2.5deg_SS1' -> (0.5, 0.4, 2.5).
     Missing tokens come back as NaN.
     """
-    frot_hz = parse_freq_token(name, "frot", FROT_DIVISOR)
-    flib_hz = parse_freq_token(name, "flib", FLIB_DIVISOR)
+    frot_hz = parse_freq_token(name, "frot")
+    flib_hz = parse_freq_token(name, "flib")
     dphi = re.search(r"dphi([\d.]+)deg", name)
     dphi_deg = float(dphi.group(1)) if dphi else np.nan
     return frot_hz, flib_hz, dphi_deg
@@ -472,13 +493,13 @@ def parse_run_name(name):
 
 def parse_flib(run_name):
     """Libration frequency (Hz) from a run name, or None if absent."""
-    v = parse_freq_token(str(run_name), "flib", FLIB_DIVISOR)
+    v = parse_freq_token(str(run_name), "flib")
     return None if np.isnan(v) else v
 
 
 def parse_frot(run_name):
     """Rotation frequency (Hz) from a run name, or None if absent."""
-    v = parse_freq_token(str(run_name), "frot", FROT_DIVISOR)
+    v = parse_freq_token(str(run_name), "frot")
     return None if np.isnan(v) else v
 
 
@@ -726,16 +747,17 @@ FIG_FORMATS = ("png", "pdf")
 
 
 def figure_filename(stem, fmt="png", normalized=False):
-    """Build a figure path: '<stem>[_normalized].<fmt>'.
+    """Build a figure path: '<stem>_DIM.<fmt>' or '<stem>_NODIM.<fmt>'.
 
-    Central so every tool tags the normalised twin and honours the png/pdf choice
-    the same way. `stem` is the path WITHOUT extension and WITHOUT the
-    _normalized suffix. fmt is 'png' or 'pdf' (a leading dot is tolerated).
+    Central so every tool tags its figures the same way: '_DIM' for the
+    physical-units figure, '_NODIM' for its dimensionless (normalised) twin.
+    `stem` is the path WITHOUT extension and WITHOUT the tag. fmt is 'png' or
+    'pdf' (a leading dot is tolerated).
     """
     fmt = str(fmt).lower().lstrip(".")
     if fmt not in FIG_FORMATS:
         raise ValueError("fmt must be one of %s, got %r" % (FIG_FORMATS, fmt))
-    return "%s%s.%s" % (stem, "_normalized" if normalized else "", fmt)
+    return "%s_%s.%s" % (stem, "NODIM" if normalized else "DIM", fmt)
 
 
 def topography_arrangement(path):
@@ -813,6 +835,37 @@ def dimensionless_numbers(frot_hz, flib_hz, dphi_deg):
 
     return {"U0_mps": U0, "E": E, "E_l": E_l, "delta_nu_m": delta_nu,
             "Ro": Ro, "Re": Re, "Re_l": Re_l, "Re_bl": Re_bl}
+
+
+def control_parameters(frot_hz, flib_hz, dphi_deg):
+    """Dimensionless control parameters of one run, keyed by summary-column name.
+
+    Built from the run's forcing (frot, flib, dphi) and the container/fluid
+    constants R, H, l (the topography wavelength lambda = 2*R/k0 [m]) and nu --
+    all module globals, so they follow the dataset once read_paramPostprocessing
+    has run. U_SCALE = 2*pi*flib*R*dphi[rad] is the peak libration wall
+    velocity. Returned dict:
+
+      Ekman              nu / (2*pi*frot*H**2)
+      BL thickness (m)   H*sqrt(Ekman)
+      Rossby             U_SCALE / (2*pi*frot*R)
+      TOPO Rossby        Rossby * R / lambda
+      TOPO Reynolds      U_SCALE * lambda / nu
+      BL Reynolds        U_SCALE * BL_thickness / nu
+
+    Anything requiring frot is NaN when frot is unknown or zero; the TOPO
+    numbers are NaN for a full cylinder (k0 = 0, lambda undefined).
+    """
+    frot = float(frot_hz)
+    u_scale = libration_velocity_scale(float(flib_hz), float(dphi_deg))
+    good_frot = np.isfinite(frot) and frot != 0.0
+    ekman = nu / (2.0 * np.pi * frot * H ** 2) if good_frot else np.nan
+    bl = H * np.sqrt(ekman) if good_frot else np.nan
+    rossby = (u_scale / (2.0 * np.pi * frot * R)) if good_frot else np.nan
+    return {"Ekman": ekman, "BL thickness (m)": bl, "Rossby": rossby,
+            "TOPO Rossby": rossby * R / l,
+            "TOPO Reynolds": u_scale * l / nu,
+            "BL Reynolds": u_scale * bl / nu}
 
 
 # --------------------------------------------------------------------------- #
