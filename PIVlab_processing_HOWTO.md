@@ -353,6 +353,9 @@ Everything below lives in:
 - `obsolete/` holds every retired tool (the old `batch_*`/`plot_*`/
   `colormaps_*` generation and their docs). Ignore it unless you need one
   specific file.
+- A `README.md` inside `PIVlab_pythonProcessing/` gives the per-routine
+  reference: every routine, every parameter-file variable, every `.npz`
+  variable. This HOWTO stays the workflow guide.
 
 ## 10. Run-folder naming
 
@@ -390,18 +393,23 @@ reads.
 | --- | --- |
 | `PIV_processing.ipynb` | **Start here.** `BATCH = True` processes every run of every dataset in the `BASE_DIRS` list; `BATCH = False` only `RUN_DIR`. Each run's `.mat` is loaded once, the fields are **rotated by the dataset's `ROTATE`** (0/±90/180°, so everything downstream lives in the final frame), and the `'KE'` and `'VELOCITY'` analyses write `KineticEnergy.npz` + `Velocity.npz` per run plus one `Runs_summary.csv` per dataset. `REPROCESS_ALL = False` reuses cached `.npz`. Every stored variable is documented in `FILE_STRUCTURE_VELOCITY.md` / `FILE_STRUCTURE_ENERGY.md`. |
 | `MAPS_VELOCITY.ipynb` | Mean/std velocity maps (`MAP_COMPONENT = 'U'`, `'V'` or `'both'`), ROI overlaid, ±θ inertial-wave characteristics on the **std** panels (at `f_lib`, or at `FREQ` when set). |
-| `MAPS_FFT.ipynb` | Spatial FFT maps: amplitude of `|FFT(U)|+|FFT(V)|` at `f_lib` (with the characteristics) and the band integral over `[FMIN, FMAX]` (`PEAK_SELECT = False` → `[DELTA_F, f_lib − DELTA_F]`), each panel with its marginal profile. |
+| `MAPS_FFT.ipynb` | Spatial FFT maps: amplitude of `\|FFT(U)\|+\|FFT(V)\|` at `f_lib` (with the characteristics) and the band integral over `[FMIN, FMAX]` (`PEAK_SELECT = False` → `[DELTA_F, f_lib − DELTA_F]`), each panel with its marginal profile. |
 | `PLOT_FFT.ipynb` | ROI-averaged spectra: `FFT_U + FFT_V` (velocity) and `FFT_EK` (energy) vs frequency, with the forcing guides and the stored detected peaks. |
 | `POLARIZATION.ipynb` | Polarization `P_V/P_U` from the stored per-point spectra, thresholded (`MIN_FFT_AMP` [m/s]: weaker `FFT_U`/`FFT_V` samples become NaN and drop out), against the inertial-wave relation. |
-| `PHASE_AVERAGE.ipynb` | Phase-averages `U`, `V` at the libration period (all complete periods, one bin per frame interval) -> `Velocity_phaseAveraged.npz` (`UPA`, `VPA`, `PHASE`, `N_SAMPLES` + shared header) and the phase-0 figure: velocity magnitude + quiver + ROI. |
-| `RES_CURVES.ipynb` | Resonance curves over a `BASE_DIRS` list: velocity amplitude at `f_lib` and energy amplitude at `2 f_lib` vs `f_lib` — per-dataset figures (symbols distinguish repeated `SSn` runs) plus overlay figures with mean ± std; save-only. |
+| `PHASE_AVERAGE.ipynb` | Phase-averages `U`, `V` at the libration period (all complete periods, one bin per frame interval) -> `Velocity_phaseAveraged.npz` (`UPA`, `VPA`, `PHASE`, `N_SAMPLES` + shared header) and the phase-0 figure: velocity magnitude + quiver + ROI + the ±θ characteristics at `f_lib`. |
+| `RES_CURVES.ipynb` | Resonance curves over the `BASE_DIRS` list: velocity amplitude at `f_lib` and energy amplitude at `2 f_lib` vs `f_lib` — per-dataset figures (symbols distinguish repeated `SSn` runs) plus overlay figures with mean ± std; save-only. |
+| `MAKE_thumbmails.ipynb` | A4 contact sheets: tiles one figure type per run into a multi-page `Thumbnails_<stem>.pdf` at each dataset root (runs sorted by `f_rot`/`f_lib`/`δφ`). The `GROUPS` list selects the figure stems — currently `PLOT_FFT_velocity_DIM`, `PLOT_FFT_energy_DIM`, `MAPS_FFT_DIM`, `MAPS_VELOCITY_DIM`, `PHASE_AVERAGE_DIM`. |
 | `select_ROI_quiver.py` | Interactive ROI picker: quiver over the background image, **in the rotated frame**; writes `PTS_ROI` into the dataset's parameter file. Run it from a terminal. |
 | `READ_velocityFile.py` / `READ_energyFile.py` | Load a `.npz` and return every stored variable under its in-file name. |
 
-The viewers (`MAPS_*`, `PLOT_FFT`, `POLARIZATION`, `PHASE_AVERAGE`) share the `BATCH` switch: `False` draws the
-single `RUN_DIR` and SHOWS the figures, `True` sweeps every run of `BASE_DIR`
-and only saves them. Other common options: `SAVE`, `FIG_FORMAT`
-(`'png'`/`'pdf'`).
+The viewers (`MAPS_*`, `PLOT_FFT`, `POLARIZATION`, `PHASE_AVERAGE`) share the
+`BATCH` switch of `PIV_processing`: `False` draws the single `RUN_DIR` and
+SHOWS the figures, `True` sweeps every run of every dataset in the `BASE_DIRS`
+list (built from `ROOT_DIR`) and only saves them. Other common options:
+`SAVE`, `OVERWRITE_FIG`, `FIG_FORMAT` (`'png'`/`'pdf'`); the `MAPS_*` viewers
+also take `FREQ` (`None` → `f_lib`; a number → that frequency) for the
+characteristic lines. `RES_CURVES` and `MAKE_thumbmails` are dataset-level
+(no single-run mode): they always sweep `BASE_DIRS`.
 
 **DIM / NODIM.** Every viewer figure is written twice: `_DIM` in physical
 units and `_NODIM` non-dimensional, where every quantity is simply starred
@@ -428,6 +436,7 @@ At the **dataset root** (next to the run folders):
 | --- | --- |
 | `Runs_summary.csv` | `PIV_processing` |
 | `RES_CURVE_ENERGY.png`, `RES_CURVE_VELOCITY.png` | `RES_CURVES` |
+| `Thumbnails_<figure stem>.pdf` (one per `GROUPS` entry, multi-page A4) | `MAKE_thumbmails` |
 | `ROI_selection.png` | `select_ROI_quiver` |
 
 At the datasets' **common parent**, when `RES_CURVES` is given several
