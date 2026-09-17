@@ -31,6 +31,14 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 # (`RES_CURVE_ENERGY_ALL`, `RES_CURVE_VELOCITY_ALL`) are written into the
 # datasets' common parent directory: one curve per dataset, repeated runs
 # collapsed to their **mean with a std error bar**.
+# 
+# Options (see Configuration): `DPHI_SELECT` restricts the plots to one or
+# several `dphi` values and `IDX_SELECT` to one or several run indices
+# (`SSn`); `FREQ_LIM_HZ` sets the frequency-axis limits (in Hz, converted by
+# `f_rot` on the non-dim panel; a single number means `(0, value)`); and
+# `RES_FREQ_THEORY` (Hz) draws a dashed vertical line at the theoretical
+# resonance frequency on both panels (in Hz on the physical one, divided by
+# `f_rot` on the non-dim one).
 
 
 import glob
@@ -56,16 +64,32 @@ builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_pr
 
 
 # --- edit me --------------------------------------------------------------- #
-ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
+ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
             "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA")
 # The datasets to build resonance curves for (each holds the run sub-folders).
+# BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
+#     "FullCylinder", "k20_bottomOnly", "k20_topBottom",
+#     "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
 BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
-    "FullCylinder", "k20_bottomOnly", "k20_topBottom",
-    "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
+    "FullCylinder", )]
 
 MARKERS = ["o", "s", "^", "D", "v", "P", "X"]   # symbol per run idx (SS1, SS2, ...)
 FIG_FORMAT = "png"      # figure format: png or pdf
 SAVE = True             # write the figures (into BASE_DIR / the common parent)
+SHOW = True             # keep the figure windows open on screen
+
+DPHI_SELECT = 4         # dphi (deg) to plot: None = all, a value (e.g. 60)
+                        # or a list of values (e.g. [0, 60])
+IDX_SELECT = 1       # run idx (SSn) to plot: None = all, a value (e.g. 1)
+                        # or a list of values (e.g. [1, 2])
+FREQ_LIM_HZ = (0.3, 1.6)  # frequency-axis limits in Hz; a single number
+                        # means (0, value); None = auto (fit the data).
+                        # The non-dim panel gets the same limits / f_rot.
+# Theoretical resonance frequencies: list of (frequency_Hz, "mode id")
+# tuples -- a dashed vertical line at each frequency, with the mode id
+# written parallel to it (physical panel in Hz, non-dim panel / f_rot).
+# Bare numbers (no label) and a single value also work; None = no lines.
+RES_FREQ_THEORY = [(0.412, "0,2,1"), (0.443, "0,4,2"), (0.562, "0,3,1")]
 
 
 # ## Collect one record per run
@@ -134,6 +158,36 @@ CURVES = {
 # ## The figures
 
 
+def _select(recs):
+    """Apply the DPHI_SELECT / IDX_SELECT restrictions (None = keep all)."""
+    if DPHI_SELECT is not None:
+        wanted = np.atleast_1d(DPHI_SELECT).astype(float)
+        recs = [r for r in recs if np.any(np.isclose(r["dphi"], wanted))]
+    if IDX_SELECT is not None:
+        wanted = {int(i) for i in np.atleast_1d(IDX_SELECT)}
+        recs = [r for r in recs if r["idx"] in wanted]
+    return recs
+
+
+def _theory_lines():
+    """RES_FREQ_THEORY normalised to (freq_Hz, label-or-None) pairs: accepts
+    None, a number, a list of numbers, or a list of (freq, "mode id")."""
+    if RES_FREQ_THEORY is None:
+        return []
+    entries = RES_FREQ_THEORY
+    if (not isinstance(entries, (list, tuple))
+            or (isinstance(entries, tuple) and len(entries) == 2
+                and np.isscalar(entries[0]) and isinstance(entries[1], str))):
+        entries = [entries]
+    out = []
+    for e in entries:
+        if isinstance(e, (list, tuple)):
+            out.append((float(e[0]), str(e[1]) if len(e) > 1 else None))
+        else:
+            out.append((float(e), None))
+    return out
+
+
 def _axes_pair(title, spec):
     fig, (axd, axn) = plt.subplots(1, 2, figsize=(12, 5))
     axd.set_xlabel(r"$f_{\mathrm{lib}}$ (Hz)", fontsize=12)
@@ -148,20 +202,53 @@ def _axes_pair(title, spec):
     return fig, axd, axn
 
 
+def _decorate(axd, axn, frots):
+    """Theory lines (RES_FREQ_THEORY) with their mode-id text, and frequency
+    limits (FREQ_LIM_HZ): in Hz on the physical panel, / f_rot on the
+    non-dim one. The mode id runs parallel to its line, just above the
+    x-axis."""
+    frot_ref = float(np.mean(frots)) if len(frots) else np.nan
+    theory = _theory_lines()
+    labelled = any(lab for _, lab in theory)
+    for j, (f0, lab) in enumerate(theory):
+        axd.axvline(f0, color="k", ls="--", lw=1.2, alpha=0.7,
+                    label=(r"$f_{\mathrm{res}}$ theory"
+                           if j == 0 and not labelled else None))
+        if lab:
+            axd.text(f0, 0.02, lab, rotation=90, va="bottom", ha="right",
+                     fontsize=8, alpha=0.8,
+                     transform=axd.get_xaxis_transform())
+        if np.isfinite(frot_ref) and frot_ref:
+            axn.axvline(f0 / frot_ref, color="k", ls="--", lw=1.2, alpha=0.7)
+            if lab:
+                axn.text(f0 / frot_ref, 0.02, lab, rotation=90, va="bottom",
+                         ha="right", fontsize=8, alpha=0.8,
+                         transform=axn.get_xaxis_transform())
+    if FREQ_LIM_HZ is not None:
+        lim = ((0.0, float(FREQ_LIM_HZ)) if np.isscalar(FREQ_LIM_HZ)
+               else tuple(FREQ_LIM_HZ))
+        axd.set_xlim(lim)
+        if np.isfinite(frot_ref) and frot_ref:
+            axn.set_xlim(lim[0] / frot_ref, lim[1] / frot_ref)
+
+
 def _finish(fig, axd, out_path):
-    """Save the figure and close it -- the curves are never shown."""
+    """Save the figure; keep the window open when SHOW, else close it."""
     axd.legend(fontsize=8)
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     if SAVE:
         fig.savefig(out_path, dpi=200, bbox_inches="tight")
         print("Figure written to:\n  %s" % out_path)
-    plt.close(fig)
+    if SHOW:
+        fig.show()
+    else:
+        plt.close(fig)
 
 
 def dataset_curve(recs, spec, title, out_path):
     """Figures 1 and 2: one point per run, symbol per run idx (repeated runs
     stand out); a separate series per (dphi, idx) when dphi varies."""
-    recs = [r for r in recs if spec["amp"] in r]
+    recs = _select([r for r in recs if spec["amp"] in r])
     if not recs:
         print("  [skip] nothing stored for %s" % os.path.basename(out_path))
         return
@@ -179,10 +266,11 @@ def dataset_curve(recs, spec, title, out_path):
                                   if len(dphis) > 1 else "")
             ln, = axd.plot([r["flib"] for r in sub],
                            [r[spec["amp"]] for r in sub],
-                           ls="-", marker=mk, ms=6, label=lab)
+                           ls="-", marker=mk, ms=3, label=lab)
             axn.plot([r["flib"] / r["frot"] for r in sub],
                      [r[spec["amp"]] / r[spec["scale"]] for r in sub],
-                     ls="-", marker=mk, ms=6, color=ln.get_color())
+                     ls="-", marker=mk, ms=3, color=ln.get_color())
+    _decorate(axd, axn, [r["frot"] for r in recs])
     _finish(fig, axd, out_path)
 
 
@@ -191,8 +279,9 @@ def overlay_curve(recs_by_ds, spec, title, out_path):
     their mean with a std error bar."""
     fig, axd, axn = _axes_pair(title, spec)
     drew = False
+    frots_used = []
     for ds, recs in recs_by_ds.items():
-        recs = [r for r in recs if spec["amp"] in r]
+        recs = _select([r for r in recs if spec["amp"] in r])
         dphis = sorted({r["dphi"] for r in recs})
         for dphi in dphis:
             groups = {}
@@ -212,17 +301,19 @@ def overlay_curve(recs_by_ds, spec, title, out_path):
             lab = ds + (r", $\Delta\phi$=%g$^\circ$" % dphi
                         if len(dphis) > 1 else "")
             eb = axd.errorbar([p[0] for p in pts], [p[2] for p in pts],
-                              yerr=[p[3] for p in pts], marker="o", ms=4,
+                              yerr=[p[3] for p in pts], marker="o", ms=2,
                               capsize=3, lw=1.2, label=lab)
             axn.errorbar([p[0] / p[1] for p in pts],
                          [p[2] / p[4] for p in pts],
-                         yerr=[p[3] / p[4] for p in pts], marker="o", ms=4,
+                         yerr=[p[3] / p[4] for p in pts], marker="o", ms=2,
                          capsize=3, lw=1.2, color=eb.lines[0].get_color())
+            frots_used.extend(p[1] for p in pts)
             drew = True
     if not drew:
         plt.close(fig)
         print("  [skip] nothing stored for %s" % os.path.basename(out_path))
         return
+    _decorate(axd, axn, frots_used)
     _finish(fig, axd, out_path)
 
 

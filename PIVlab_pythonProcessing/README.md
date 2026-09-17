@@ -162,6 +162,16 @@ title), tiles that figure from every run into a multi-page
 `PHASE_AVERAGE_DIM`. Options: page orientation, `DPI`, `SOURCE_EXT`,
 `EXCLUDE` (folder-name substrings to skip), `OVERWRITE`.
 
+### `Calibration_PIV.py` (terminal script)
+
+Interactive calibration: shows a calibration image rotated by the dataset's
+`ROTATE`, asks for the image file name in the terminal, lets you click the two
+ends of a segment of known length (Enter to accept, `r` to redo, Esc to quit),
+then asks for that length in millimetres. Enter validates and writes
+`XSCALE = (mm/1000)/px` and `YSCALE = XSCALE` into the dataset's
+`param_postProcessing.json`; `r` redoes the measurement, `esc` cancels. Also
+saves `Calibration_selection.png` (segment + numbers) at the dataset root.
+
 ### `select_ROI_quiver.py` (terminal script)
 
 Interactive ROI picker: shows the background image and quiver **in the

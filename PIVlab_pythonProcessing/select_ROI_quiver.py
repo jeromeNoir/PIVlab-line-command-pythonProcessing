@@ -69,8 +69,8 @@ from piv_postprocessing_lib import (load_piv, read_acquisition_params,
 
 # The run folder to look at (holds the .mat, the acquisition log and, ideally,
 # background.mat). A command-line argument overrides it.
-RUN_DIR = ('/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/'
-           'CylinderExperimentsGMA/k20_topBottom/frot0.50Hz_flib0.400Hz_dphi2deg_SS1')
+RUN_DIR = ('/Users/jeromenoir/Documents/MyDocuments/TOPOGRAPHY_LIBRATION/'
+           'CylinderExperimentsGMA/k20_topBottom_centerTight_spacer64mm/frot0.50Hz_flib0.400Hz_dphi2deg_SS1')
 
 # Which velocity field to draw:
 #   an int  -> that frame (0-based)

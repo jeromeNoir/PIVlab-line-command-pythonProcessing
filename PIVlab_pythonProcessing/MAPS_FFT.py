@@ -31,6 +31,11 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 #    (the mean amplitude each point carries in the band) -- no characteristics
 #    on this one.
 # 
+# `REGION` picks the domain of both panels: `'ROI'` keeps **only the grid
+# points inside the `pts_ROI` rectangle** -- every outside point is
+# excluded (NaN) from the maps, the marginals and the colour scales, not
+# just hidden -- while `'FULL'` keeps the whole field.
+# 
 # The band is set by `PEAK_SELECT`: `True` uses the `FMIN` / `FMAX` values from
 # the configuration, `False` uses `FMIN = DELTA_F`, `FMAX = f_lib - DELTA_F`.
 # 
@@ -49,7 +54,12 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+import warnings
+
 from piv_postprocessing_lib import figure_filename, resolve_npz
+
+# The ROI-only marginal averages rows entirely outside the ROI (all-NaN).
+warnings.filterwarnings("ignore", message="Mean of empty slice")
 
 
 # --- Mute switch -----------------------------------------------------------
@@ -75,26 +85,37 @@ builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_pr
 #                  BASE_DIRS that
 #                  has a Velocity.npz: the figures are SAVED but not shown;
 # BATCH = False -> only the single run RUN_DIR: figures saved AND shown.
-BATCH = True
+BATCH = False
 
-RUN_DIR = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
-           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom/"
-           "frot0.50Hz_flib0.430Hz_dphi2deg_SS1")  # run folder or Velocity.npz
+RUN_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
+           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom_centerTight/"
+           "frot0.50Hz_flib0.400Hz_dphi2deg_SS1")  # run folder or Velocity.npz
                                                    # (BATCH = False)
-
-ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
+                                                   
+ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
         "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA")
+
 # The datasets swept when BATCH = True (each holds the run sub-folders).
+# BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
+#     "FullCylinder", "k20_bottomOnly", "k20_topBottom",
+# "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
 BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
-    "FullCylinder", "k20_bottomOnly", "k20_topBottom",
-    "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
+    "k20_topBottom_centerTight" ,)]
+
+
+
+
+# --- Region -----------------------------------------------------------------
+# REGION = 'ROI'  -> keep only the points inside pts_ROI (outside = NaN);
+# REGION = 'FULL' -> the whole field.
+REGION = "ROI"
 
 # --- Frequency band of the integral map [Hz] --------------------------------
 #   PEAK_SELECT = True  -> the band is [FMIN, FMAX] as set below;
 #   PEAK_SELECT = False -> the band is [DELTA_F, flib - DELTA_F].
-PEAK_SELECT = False
-FMIN = 0.288             # Hz, used only when PEAK_SELECT = True
-FMAX = 0.345             # Hz, used only when PEAK_SELECT = True
+PEAK_SELECT = True
+FMIN = 0.49             # Hz, used only when PEAK_SELECT = True
+FMAX = 0.51             # Hz, used only when PEAK_SELECT = True
 DELTA_F = 0.05           # Hz, sets the band when PEAK_SELECT = False
 
 # --- Inertial-wave characteristic lines (panel 1 only) ----------------------
@@ -151,6 +172,7 @@ def load_run(path):
     amp_total = (_g("FFT_U").astype(float) * UCAL
                  + _g("FFT_V").astype(float) * VCAL)         # (ny, nx, nf), m/s
     pts_ROI = np.asarray(_g("pts_ROI"), dtype=float)         # ROI corners [m]
+    mask_ROI = _g("MASK_ROI").astype(float)                  # 1 inside, NaN out
 
     if not (np.isfinite(flib) and flib > 0):
         raise ValueError("flib unknown from the run name -- cannot place the "
@@ -183,6 +205,7 @@ def load_run(path):
                 bottom_topo=bottom_topo, frot=frot, flib=flib, dphi=dphi,
                 U_SCALE=U_SCALE, F_SCALE=F_SCALE, LENGTH_SCALE=LENGTH_SCALE,
                 x=x, z=z, freq=freq, amp_total=amp_total, pts_ROI=pts_ROI,
+                mask_ROI=mask_ROI,
                 fmin=fmin, fmax=fmax, _band=_band,
                 funit=funit, aunit=aunit, _anno=_anno)
 
@@ -192,13 +215,17 @@ def load_run(path):
 # 1. amplitude at `f_lib`: max of `|FFT(U)|+|FFT(V)|` within
 #    +/- `HALFWIDTH_BINS` bins of `f_lib`;
 # 2. band average: integral over `[FMIN, FMAX]` / `(FMAX - FMIN)`.
+# 
+# With `REGION = 'ROI'` both maps keep only the points inside the ROI
+# (everything outside is excluded (NaN), not just hidden); `REGION =
+# 'FULL'` keeps the whole field.
 
 
 _trapz = getattr(np, "trapezoid", np.trapz)   # np.trapz deprecated in numpy>=2
 
 
 def compute_maps():
-    """The two maps of the loaded run (module globals set by load_run)."""
+    """The two maps of the loaded run, on the REGION domain (module globals set by load_run)."""
     # (1) Amplitude at f_lib (max over +/- HALFWIDTH_BINS bins around it).
     _k = int(np.argmin(np.abs(freq - flib)))
     _lo = max(0, _k - HALFWIDTH_BINS)
@@ -208,7 +235,14 @@ def compute_maps():
     # (2) Integral over [fmin, fmax] normalised by the bandwidth.
     bandavg = (_trapz(amp_total[:, :, _band], freq[_band], axis=2)
                / (fmax - fmin))
-    return dict(peak_flib=peak_flib, bandavg=bandavg)
+
+    # REGION = 'ROI' excludes every point outside the ROI (NaN);
+    # REGION = 'FULL' keeps the whole field.
+    if str(REGION).upper() not in ("ROI", "FULL"):
+        raise ValueError("REGION must be 'ROI' or 'FULL', got %r"
+                         % (REGION,))
+    _m = mask_ROI if str(REGION).upper() == "ROI" else 1.0
+    return dict(peak_flib=peak_flib * _m, bandavg=bandavg * _m)
 
 
 # ## Figure builders and the two figures
@@ -300,7 +334,8 @@ def _panel(fig, axm, xs, zs, fld, title, cbar_label, xlab, zlab, plab,
 
 def make_maps(normalize):
     """The two-panel figure: amplitude at f_lib (with characteristics) and the
-    band average (without). normalize=True divides lengths by LENGTH_SCALE,
+    band average, both on the REGION domain (ROI-only or full field).
+    normalize=True divides lengths by LENGTH_SCALE,
     amplitudes by U_SCALE, frequencies by F_SCALE, and simply stars every
     label (x*, z*, f*, amplitude*) with no units or /SCALE suffixes."""
     lscale = (LENGTH_SCALE if (normalize and np.isfinite(LENGTH_SCALE)

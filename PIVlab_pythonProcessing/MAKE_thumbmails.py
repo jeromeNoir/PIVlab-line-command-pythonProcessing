@@ -48,12 +48,14 @@ builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_pr
 
 
 # --- edit me --------------------------------------------------------------- #
-ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
+ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
             "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA")
 # The datasets to build sheets for (each holds the run sub-folders).
+# BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
+#     "FullCylinder", "k20_bottomOnly", "k20_topBottom",
+#     "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
 BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
-    "FullCylinder", "k20_bottomOnly", "k20_topBottom",
-    "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
+    "k20_topBottom_centerTight_spacer64mm",)]
 
 # Per-run figure STEM (inside <run>/PostProcessing/) -> title of its sheet.
 GROUPS = [

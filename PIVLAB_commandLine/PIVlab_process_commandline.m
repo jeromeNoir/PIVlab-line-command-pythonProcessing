@@ -9,13 +9,13 @@
 
 
 %% Tell MATLAB where the PIVlab package folders are
-%project_root = fileparts(fileparts(mfilename('/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_bottomOnly/')))
+%project_root = fileparts(fileparts(mfilename('/Users/jeromenoir/Documents/MyDocuments/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_bottomOnly/')))
 project_root = '/Volumes/Archives/TOPOLIB_TopBottom/k6_bottomOnly_II';
 run_folder = 'frot050_flib0405_dphi2deg_SS1';
 image_folder = fullfile(project_root,run_folder);
 file_pattern = '*.tif'; % for example '*.bmp', '*.tif', '*.png', '*.jpg'
 
-local_folder = '/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k6_TopBottom';
+local_folder = '/Users/jeromenoir/Documents/MyDocuments/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k6_TopBottom';
 results_folder = fullfile(local_folder,run_folder);
 file_results = fullfile(results_folder, 'PIVlab_results_uncalibrated.mat');
 file_figure = fullfile(results_folder, 'PIVlab_figure_uncalibrated_firstFrame.jpg');

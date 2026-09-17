@@ -8,9 +8,9 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 
 
 
-# # PLOT_FFT -- ROI-averaged spectra of velocity and kinetic energy
+# # PLOT_FFT -- ROI- and FULL-averaged spectra of velocity and kinetic energy
 # 
-# Viewer of the ROI-averaged spectra stored in each run's
+# Viewer of the space-averaged spectra stored in each run's
 # `PostProcessing/Velocity.npz` and `KineticEnergy.npz`; **nothing is
 # recomputed from the `.mat`** (use `PIV_processing` to reprocess). Draws the
 # **single run `RUN_DIR`** (`BATCH = False`: figures saved AND shown) or
@@ -23,8 +23,8 @@ matplotlib.use("Agg")   # non-interactive: savefig works, nothing pops up or blo
 # 
 # | figure | spectrum | from |
 # |---|---|---|
-# | `PLOT_FFT_velocity_DIM` / `_NODIM` | `FFT_U_ROIaveraged + FFT_V_ROIaveraged` -- the ROI-averaged total velocity amplitude, with the stored detected peaks (black diamonds) | `Velocity.npz` |
-# | `PLOT_FFT_energy_DIM` / `_NODIM` | `FFT_EK_ROIaveraged` -- the ROI average of the per-point Ek spectra | `KineticEnergy.npz` |
+# | `PLOT_FFT_velocity_DIM` / `_NODIM` | `FFT_U_ROIaveraged + FFT_V_ROIaveraged` (ROI) and `FFT_U_FULLaveraged + FFT_V_FULLaveraged` (FULL) -- both space averages of the total velocity amplitude on the same axes, with the stored detected peaks (black diamonds, on the ROI curve) | `Velocity.npz` |
+# | `PLOT_FFT_energy_DIM` / `_NODIM` | `FFT_EK_ROIaveraged` and `FFT_EK_FULLaveraged` -- the ROI and full-field averages of the per-point Ek spectra on the same axes | `KineticEnergy.npz` |
 # 
 # Both carry the dashed guides at `f_rot`, `f_lib`, `2 f_lib`, `f_low` (the
 # strongest detected velocity peak) and its sidebands. A run missing one of the
@@ -63,20 +63,23 @@ builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_pr
 # BATCH = True  -> draw the spectra for every run sub-folder of every dataset
 #                  in BASE_DIRS that
 #                  has a Velocity.npz or KineticEnergy.npz: figures are SAVED
-#                  but not shown;
+#                  but not shown (unless SHOW = True);
 # BATCH = False -> only the single run RUN_DIR: figures saved AND shown.
-BATCH = False
+BATCH = True
 
-RUN_DIR = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
-           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom/"
-           "frot0.50Hz_flib0.400Hz_dphi2deg_SS1")  # run folder (BATCH = False)
-
-ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
+ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
         "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA")
-# The datasets swept when BATCH = True (each holds the run sub-folders).
+
+RUN_DIR = os.path.join(ROOT_DIR, "k20_topBottom_centerTight_spacer64mm/frot0.50Hz_flib0.400Hz_dphi2deg_SS1") # run folder (BATCH = False)
+
+
+# BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
+#     "FullCylinder", "k20_bottomOnly", "k20_topBottom","k20_topBottom_centerTight",
+#     "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
+
 BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
-    "FullCylinder", "k20_bottomOnly", "k20_topBottom",
-    "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
+   "k20_topBottom_centerTight_spacer64mm",)]
+
 
 LOGY = True             # log amplitude axis (False -> linear)
 LOGX = False            # log frequency axis (False -> linear)
@@ -85,6 +88,8 @@ FMAX = 2.0              # frequency limit [Hz]; None -> auto
 SAVE = True             # write the figures next to the .npz
 OVERWRITE_FIG = True    # False -> keep existing figure files
 FIG_FORMAT = "png"      # figure format: png or pdf
+SHOW = False            # True -> keep every figure window open, even in
+                        # batch mode (single-run mode always shows)
 
 
 # ## Load the `.npz` and calibrate on the fly
@@ -124,8 +129,12 @@ def load_run(path):
             f=np.asarray(d["FREQ"], float) * FCAL,
             amp=(np.asarray(d["FFT_U_ROIaveraged"], float)
                  + np.asarray(d["FFT_V_ROIaveraged"], float)) * UCAL,
+            amp_full=(np.asarray(d["FFT_U_FULLaveraged"], float)
+                      + np.asarray(d["FFT_V_FULLaveraged"], float)) * UCAL,
             scale=U_SCALE,
             label=r"$\langle|\widehat{U}|+|\widehat{V}|\rangle_{\mathrm{ROI}}$",
+            label_full=r"$\langle|\widehat{U}|+|\widehat{V}|\rangle_{\mathrm{FULL}}$",
+            ylabel=r"$\langle|\widehat{U}|+|\widehat{V}|\rangle$",
             unit="m/s",
             peaks_f=f_peaks,
             peaks_a=np.atleast_1d(np.asarray(d["AMP_PEAKS"], float)) * UCAL)
@@ -138,8 +147,11 @@ def load_run(path):
         SPECTRA["energy"] = dict(
             f=np.asarray(d["FREQ"], float) * FCAL,
             amp=np.asarray(d["FFT_EK_ROIaveraged"], float) * ECAL,
+            amp_full=np.asarray(d["FFT_EK_FULLaveraged"], float) * ECAL,
             scale=EK_SCALE,
             label=r"$\langle|\widehat{E_k}|\rangle_{\mathrm{ROI}}$",
+            label_full=r"$\langle|\widehat{E_k}|\rangle_{\mathrm{FULL}}$",
+            ylabel=r"$\langle|\widehat{E_k}|\rangle$",
             unit=u"m\u00b2/s\u00b2",
             peaks_f=np.array([]), peaks_a=np.array([]))
         if shared is None:
@@ -176,7 +188,8 @@ def load_run(path):
 
 
 def make_fft(kind, normalize):
-    """One spectrum figure (kind = 'velocity' or 'energy'). normalize=True
+    """One spectrum figure (kind = 'velocity' or 'energy'), with the ROI-
+    and FULL-averaged curves on the same axes. normalize=True
     divides f by F_SCALE and the amplitude by the spectrum's *_SCALE, with
     ^* on all quantities and no units."""
     sp = SPECTRA[kind]
@@ -185,6 +198,7 @@ def make_fft(kind, normalize):
                               and sp["scale"]) else 1.0)
     ff = sp["f"] / fscale
     at = sp["amp"] / ascale
+    atF = sp["amp_full"] / ascale
     _frot = frot / fscale if (np.isfinite(frot) and frot) else None
     _flib = flib / fscale if (np.isfinite(flib) and flib) else None
     _flow = f_low / fscale if np.isfinite(f_low) else None
@@ -198,18 +212,21 @@ def make_fft(kind, normalize):
         sel &= ff > 0
     # y limits from the VISIBLE part of the curve (excluding the detrended
     # near-zero DC bin), one decade of margin.
-    _vis = at[sel & (ff > 0) & (at > 0)]
+    _vis = np.concatenate([_a[sel & (ff > 0) & (_a > 0)]
+                           for _a in (at, atF)])
     if _vis.size:
         ymin_c = 10.0 ** np.floor(np.log10(_vis.min()))
         ymax_c = 10.0 ** np.ceil(np.log10(_vis.max()))
 
     fig, ax = plt.subplots(figsize=(8.5, 5.5))
     plot = ax.semilogy if LOGY else ax.plot
+    plot(ff[sel], atF[sel], color="C1", lw=1.0, alpha=0.85,
+         label=_star(sp["label_full"]))
     plot(ff[sel], at[sel], color="C0", lw=1.2, label=_star(sp["label"]))
     ax.set_xlabel(r"$f^*$" if normalize else "frequency (%s)" % funit,
                   fontsize=13)
-    ax.set_ylabel(_star(sp["label"]) if normalize
-                  else "%s  (%s)" % (sp["label"], sp["unit"]), fontsize=13)
+    ax.set_ylabel(_star(sp["ylabel"]) if normalize
+                  else "%s  (%s)" % (sp["ylabel"], sp["unit"]), fontsize=13)
     ax.set_title("%s%s   (%s)" % (run, "   (normalized)" if normalize else "",
                                   _anno), fontsize=11)
     ax.grid(True, alpha=0.3, which="both")
@@ -243,8 +260,9 @@ def make_fft(kind, normalize):
 
 
 def process_run(path, show):
-    """Load one run, draw and save its spectra (_DIM and _NODIM each); show
-    them when `show` (single-run mode), close them otherwise (batch mode)."""
+    """Load one run, draw and save its spectra (_DIM and _NODIM each); keep
+    the windows open when `show` (single-run mode) or SHOW = True, close
+    them otherwise (batch mode)."""
     globals().update(load_run(path))
     for kind in ("velocity", "energy"):
         if kind not in SPECTRA:
@@ -262,8 +280,8 @@ def process_run(path, show):
                 else:
                     print("Figure exists (OVERWRITE_FIG=False), kept:\n  %s"
                           % _out)
-            if show:
-                plt.show()
+            if show or SHOW:
+                _fig.show()
             else:
                 plt.close(_fig)
 

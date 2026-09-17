@@ -399,6 +399,7 @@ reads.
 | `PHASE_AVERAGE.ipynb` | Phase-averages `U`, `V` at the libration period (all complete periods, one bin per frame interval) -> `Velocity_phaseAveraged.npz` (`UPA`, `VPA`, `PHASE`, `N_SAMPLES` + shared header) and the phase-0 figure: velocity magnitude + quiver + ROI + the ±θ characteristics at `f_lib`. |
 | `RES_CURVES.ipynb` | Resonance curves over the `BASE_DIRS` list: velocity amplitude at `f_lib` and energy amplitude at `2 f_lib` vs `f_lib` — per-dataset figures (symbols distinguish repeated `SSn` runs) plus overlay figures with mean ± std; save-only. |
 | `MAKE_thumbmails.ipynb` | A4 contact sheets: tiles one figure type per run into a multi-page `Thumbnails_<stem>.pdf` at each dataset root (runs sorted by `f_rot`/`f_lib`/`δφ`). The `GROUPS` list selects the figure stems — currently `PLOT_FFT_velocity_DIM`, `PLOT_FFT_energy_DIM`, `MAPS_FFT_DIM`, `MAPS_VELOCITY_DIM`, `PHASE_AVERAGE_DIM`. |
+| `Calibration_PIV.py` | Interactive calibration: click a segment of known length on a calibration image (shown **in the rotated frame**), give its length in mm; writes `XSCALE = YSCALE` into the dataset's parameter file. Run it from a terminal. |
 | `select_ROI_quiver.py` | Interactive ROI picker: quiver over the background image, **in the rotated frame**; writes `PTS_ROI` into the dataset's parameter file. Run it from a terminal. |
 | `READ_velocityFile.py` / `READ_energyFile.py` | Load a `.npz` and return every stored variable under its in-file name. |
 

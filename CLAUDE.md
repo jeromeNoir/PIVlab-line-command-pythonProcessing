@@ -8,7 +8,7 @@ libration/topography experiments using a command-line build of PIVlab.
 - **PIVlab command-line code:**
   `/Users/jeromenoir/polybox/CODES/PIV/PIVLab/PIVlab-line-command-pythonProcessing/PIVLAB_commandLine/`
 - **Project working dir (results land here):**
-  `/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA`
+  `/Users/jeromenoir/Documents/MyDocuments/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA`
 - **Image source root (example):** `/Volumes/Archives/TOPOLIB_TopBottom/k6_TopBottom`
 
 ## Scripts

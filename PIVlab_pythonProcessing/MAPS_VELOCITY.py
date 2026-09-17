@@ -69,17 +69,20 @@ builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_pr
 # BATCH = False -> only the single run RUN_DIR: figures saved AND shown.
 BATCH = True
 
-RUN_DIR = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
-           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom/"
-           "frot0.50Hz_flib0.400Hz_dphi2deg_SS1")  # run folder or Velocity.npz
+RUN_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
+           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom_center/"
+           "frot0.50Hz_flib0.400Hz_dphi2deg_SS4")  # run folder or Velocity.npz
                                                    # (BATCH = False)
 
-ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/"
+ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
         "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA")
 # The datasets swept when BATCH = True (each holds the run sub-folders).
 BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
-    "FullCylinder", "k20_bottomOnly", "k20_topBottom",
-    "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
+   "k20_topBottom_centerTight",
+    )]
+# BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
+#     "FullCylinder", "k20_bottomOnly", "k20_topBottom",
+#     "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
 
 REGION = "ROI"          # 'ROI' or 'FULL': which region the peak printout uses
 

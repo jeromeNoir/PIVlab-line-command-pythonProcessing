@@ -13,8 +13,8 @@
 
 
 %% Tell MATLAB where the images and the results should live
-project_root = '/Volumes/T7/TOPOLIB_TopBottom/k20_topBottom';
-local_folder = '/Users/jeromenoir/Documents/MyDocuments/LOCAL_PROJECT/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom';
+project_root = '/Volumes/T7PIV-JN/TOPOLIB_TopBottom/k20_topBottom_centerTight_spacer64mm';
+local_folder = '/Users/jeromenoir/Documents/MyDocuments/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom_centerTight_spacer64mm';
 file_pattern = '*.tif'; % for example '*.bmp', '*.tif', '*.png', '*.jpg'
 
 %% Choose what to (re)process
