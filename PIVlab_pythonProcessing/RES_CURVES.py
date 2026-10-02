@@ -47,6 +47,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+from piv_postprocessing_lib import pickle_figure
+
 
 # --- Mute switch -----------------------------------------------------------
 # MUTE_PRINT = True silences ALL print() output (this notebook AND the
@@ -76,6 +78,9 @@ BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
 MARKERS = ["o", "s", "^", "D", "v", "P", "X"]   # symbol per run idx (SS1, SS2, ...)
 FIG_FORMAT = "png"      # figure format: png or pdf
 SAVE = True             # write the figures (into BASE_DIR / the common parent)
+SAVE_PICKLE = True      # ALSO save each figure as <name>.fig.pickle:
+                        # reopen it fully interactive (Qt zoom/cursor)
+                        # with openFigure.py
 SHOW = True             # keep the figure windows open on screen
 
 DPHI_SELECT = 4         # dphi (deg) to plot: None = all, a value (e.g. 60)
@@ -239,6 +244,8 @@ def _finish(fig, axd, out_path):
     if SAVE:
         fig.savefig(out_path, dpi=200, bbox_inches="tight")
         print("Figure written to:\n  %s" % out_path)
+        if SAVE_PICKLE:
+            pickle_figure(fig, out_path)
     if SHOW:
         fig.show()
     else:

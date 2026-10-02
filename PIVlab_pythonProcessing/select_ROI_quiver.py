@@ -70,7 +70,7 @@ from piv_postprocessing_lib import (load_piv, read_acquisition_params,
 # The run folder to look at (holds the .mat, the acquisition log and, ideally,
 # background.mat). A command-line argument overrides it.
 RUN_DIR = ('/Users/jeromenoir/Documents/MyDocuments/TOPOGRAPHY_LIBRATION/'
-           'CylinderExperimentsGMA/k20_topBottom_centerTight_spacer64mm/frot0.50Hz_flib0.400Hz_dphi2deg_SS1')
+           'CylinderExperimentsGMA/k20_topBottom_fullView_spacer64mm/frot0.50Hz_flib0.400Hz_dphi2deg_SS1')
 
 # Which velocity field to draw:
 #   an int  -> that frame (0-based)
@@ -87,14 +87,14 @@ VALIDATE_VELOCITY = None
 
 QUIVER_SKIP = 1         # draw every n-th vector in each direction
 QUIVER_SCALE = None      # None -> matplotlib autoscale; a number -> m/s per axis-width
-QUIVER_COLOR = 'yellow'  # arrows sit on a grey image, so keep them bright
+QUIVER_COLOR = 'black'  # arrows sit on a grey image, so keep them bright
 QUIVER_WIDTH = 0.0022    # shaft width, in axes fractions
 
 # Background image. None -> <RUN_DIR>/background.mat (bg_img_A). A path to any
 # image file (or another .mat) is used instead. Runs recorded without a
 # background get a plain field and a warning -- the vectors and the picking are
 # unaffected, only the picture is missing.
-BG_FILE = None
+BG_FILE = '/Users/jeromenoir/Documents/MyDocuments/TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom_fullView_spacer64mm/ForRoiSelection.tif'
 BG_CMAP = 'gray'
 # Contrast stretch, as (low, high) intensity percentiles. Raw PIV frames are
 # nearly black -- clipping the tails is what makes the walls and the topography

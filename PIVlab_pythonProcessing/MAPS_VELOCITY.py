@@ -40,7 +40,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from piv_postprocessing_lib import (dimensionless_numbers, figure_filename,
+from piv_postprocessing_lib import (pickle_figure,
+                        dimensionless_numbers, figure_filename,
                         peak_freq, read_paramPostprocessing, resolve_npz)
 
 
@@ -98,6 +99,9 @@ N_LINES = 4               # lines per angle, equally spaced across the domain
 SCALING_WIDTH_LINE = 0.7  # line-width scaling for the +/- theta lines
 
 SAVE = True             # write the figures next to the .npz
+SAVE_PICKLE = True      # ALSO save each figure as <name>.fig.pickle:
+                        # reopen it fully interactive (Qt zoom/cursor)
+                        # with openFigure.py
 OVERWRITE_FIG = True    # False -> keep existing figure files
 FIG_FORMAT = "png"      # 'png' or 'pdf'; every figure is written twice:
                         # _DIM (physical units) and _NODIM (dimensionless)
@@ -356,6 +360,8 @@ def process_run(path, show):
             if OVERWRITE_FIG or not os.path.isfile(_out):
                 _fig.savefig(_out, dpi=200, bbox_inches="tight")
                 print("Figure written to:\n  %s" % _out)
+                if SAVE_PICKLE:
+                    pickle_figure(_fig, _out)
             else:
                 print("Figure exists (OVERWRITE_FIG=False), kept:\n  %s"
                       % _out)

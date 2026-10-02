@@ -37,7 +37,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from piv_postprocessing_lib import (fft_axis_limits, fft_guide_lines,
+from piv_postprocessing_lib import (pickle_figure,
+                        fft_axis_limits, fft_guide_lines,
                         figure_filename)
 
 
@@ -65,12 +66,12 @@ builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_pr
 #                  has a Velocity.npz or KineticEnergy.npz: figures are SAVED
 #                  but not shown (unless SHOW = True);
 # BATCH = False -> only the single run RUN_DIR: figures saved AND shown.
-BATCH = True
+BATCH = False
 
 ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
         "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA")
 
-RUN_DIR = os.path.join(ROOT_DIR, "k20_topBottom_centerTight_spacer64mm/frot0.50Hz_flib0.400Hz_dphi2deg_SS1") # run folder (BATCH = False)
+RUN_DIR = os.path.join(ROOT_DIR, "k20_topBottom_fullView_spacer64mm/frot0.50Hz_flib0.400Hz_dphi0deg_SS2") # run folder (BATCH = False)
 
 
 # BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
@@ -78,7 +79,7 @@ RUN_DIR = os.path.join(ROOT_DIR, "k20_topBottom_centerTight_spacer64mm/frot0.50H
 #     "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
 
 BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
-   "k20_topBottom_centerTight_spacer64mm",)]
+   "k20_topBottom_fullView_spacer64mm",)]
 
 
 LOGY = True             # log amplitude axis (False -> linear)
@@ -86,9 +87,12 @@ LOGX = False            # log frequency axis (False -> linear)
 FMAX = 2.0              # frequency limit [Hz]; None -> auto
 
 SAVE = True             # write the figures next to the .npz
+SAVE_PICKLE = True      # ALSO save each figure as <name>.fig.pickle:
+                        # reopen it fully interactive (Qt zoom/cursor)
+                        # with openFigure.py
 OVERWRITE_FIG = True    # False -> keep existing figure files
 FIG_FORMAT = "png"      # figure format: png or pdf
-SHOW = False            # True -> keep every figure window open, even in
+SHOW = True            # True -> keep every figure window open, even in
                         # batch mode (single-run mode always shows)
 
 
@@ -277,6 +281,8 @@ def process_run(path, show):
                 if OVERWRITE_FIG or not os.path.isfile(_out):
                     _fig.savefig(_out, dpi=200, bbox_inches="tight")
                     print("Figure written to:\n  %s" % _out)
+                    if SAVE_PICKLE:
+                        pickle_figure(_fig, _out)
                 else:
                     print("Figure exists (OVERWRITE_FIG=False), kept:\n  %s"
                           % _out)

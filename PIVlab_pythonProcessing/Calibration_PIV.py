@@ -65,7 +65,7 @@ from piv_postprocessing_lib import read_paramPostprocessing
 # The dataset folder (holds param_postProcessing.json). A command-line argument
 # overrides it. The calibration image is asked in the terminal at start-up.
 BASE_DIR = ('/Users/jeromenoir/Documents/MyDocuments/'
-            'TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom_centerTight')
+            'TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom_fullView_spacer64mm')
 
 # Default answer of the image prompt (empty -> no default). Absolute, or
 # relative to BASE_DIR.

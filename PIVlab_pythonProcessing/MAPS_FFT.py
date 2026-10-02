@@ -56,7 +56,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import warnings
 
-from piv_postprocessing_lib import figure_filename, resolve_npz
+from piv_postprocessing_lib import pickle_figure, figure_filename, resolve_npz
 
 # The ROI-only marginal averages rows entirely outside the ROI (all-NaN).
 warnings.filterwarnings("ignore", message="Mean of empty slice")
@@ -88,8 +88,8 @@ builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_pr
 BATCH = False
 
 RUN_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
-           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom_centerTight/"
-           "frot0.50Hz_flib0.400Hz_dphi2deg_SS1")  # run folder or Velocity.npz
+           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom_fullView_spacer64mm/"
+           "frot0.50Hz_flib0.400Hz_dphi0deg_SS3")  # run folder or Velocity.npz
                                                    # (BATCH = False)
                                                    
 ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
@@ -114,8 +114,8 @@ REGION = "ROI"
 #   PEAK_SELECT = True  -> the band is [FMIN, FMAX] as set below;
 #   PEAK_SELECT = False -> the band is [DELTA_F, flib - DELTA_F].
 PEAK_SELECT = True
-FMIN = 0.49             # Hz, used only when PEAK_SELECT = True
-FMAX = 0.51             # Hz, used only when PEAK_SELECT = True
+FMIN = 0.4985            # Hz, used only when PEAK_SELECT = True
+FMAX = 0.5015             # Hz, used only when PEAK_SELECT = True
 DELTA_F = 0.05           # Hz, sets the band when PEAK_SELECT = False
 
 # --- Inertial-wave characteristic lines (panel 1 only) ----------------------
@@ -131,6 +131,9 @@ CMAP = "viridis"
 LOGC = False             # log colour scale on the maps (False -> linear)
 FIG_FORMAT = "png"       # 'png' or 'pdf'
 SAVE = True              # write the figures next to the .npz
+SAVE_PICKLE = True      # ALSO save each figure as <name>.fig.pickle:
+                        # reopen it fully interactive (Qt zoom/cursor)
+                        # with openFigure.py
 
 
 # ## Load the `.npz` and calibrate on the fly
@@ -400,6 +403,8 @@ def process_run(path, show):
                                    FIG_FORMAT, normalized=_norm)
             _fig.savefig(_out, dpi=200, bbox_inches="tight")
             print("Figure written to:\n  %s" % _out)
+            if SAVE_PICKLE:
+                pickle_figure(_fig, _out)
         if show:
             plt.show()
         else:

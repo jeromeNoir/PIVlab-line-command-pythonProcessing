@@ -892,3 +892,19 @@ def compute_polarization(f, powerU, powerV, frot):
     good = pu > 0
     pol_data[good] = (pv[good] / pu[good]) ** 2
     return f_pol, pol_IW, pol_data
+
+
+def pickle_figure(fig, fig_path):
+    """Write the reopenable twin of a saved figure.
+
+    '<fig_path minus extension>.fig.pickle', next to the png/pdf: reload it
+    fully interactive (Qt zoom/pan/cursor readout) with openFigure.py, or
+        fig = pickle.load(open(path, "rb")); fig.show()
+    Returns the pickle path.
+    """
+    import pickle
+    pkl_path = os.path.splitext(fig_path)[0] + ".fig.pickle"
+    with open(pkl_path, "wb") as fh:
+        pickle.dump(fig, fh)
+    print("Interactive figure pickled to:\n  %s" % pkl_path)
+    return pkl_path

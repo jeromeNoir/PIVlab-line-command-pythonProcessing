@@ -116,7 +116,7 @@ ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
 #     "FullCylinder", "k20_bottomOnly", "k20_topBottom",
 #     "k6_TopBottom", "k6_TopBottom_notAligned", "k6_bottomOnly")]
 BASE_DIRS = [os.path.join(ROOT_DIR, _d) for _d in (
-    "k20_topBottom_centerTight_spacer64mm",)]
+    "k20_topBottom_fullView_spacer64mm",)]
 
 # Which analyses to run on each loaded field. The .mat is read ONCE per run
 # whatever this contains, so asking for both is far cheaper than two passes.

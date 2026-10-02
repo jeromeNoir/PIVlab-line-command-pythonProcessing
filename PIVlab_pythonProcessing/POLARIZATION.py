@@ -34,7 +34,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from piv_postprocessing_lib import figure_filename, resolve_npz
+from piv_postprocessing_lib import pickle_figure, figure_filename, resolve_npz
 
 
 # --- Mute switch -----------------------------------------------------------
@@ -63,8 +63,8 @@ builtins.print = (lambda *a, **k: None) if MUTE_PRINT else builtins._piv_real_pr
 BATCH = False
 
 RUN_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
-           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_bottomOnly/"
-           "frot0.50Hz_flib0.400Hz_dphi2deg_SS1")  # run folder or Velocity.npz
+           "TOPOGRAPHY_LIBRATION/CylinderExperimentsGMA/k20_topBottom_centerTight_spacer64mm/"
+           "frot0.50Hz_flib0.400Hz_dphi8deg_SS1")  # run folder or Velocity.npz
                                                    # (BATCH = False)
 
 ROOT_DIR = ("/Users/jeromenoir/Documents/MyDocuments/"
@@ -79,9 +79,12 @@ REGION = "ROI"          # 'ROI' or 'FULL': which region the statistics use
 # Threshold on the spectra, PHYSICAL units [m/s]: any FFT_U or FFT_V
 # amplitude below this is set to NaN, so the ratio (FFT_V/FFT_U)**2 there is
 # NaN and drops out of the mean/median/percentiles.
-MIN_FFT_AMP = 1e-5
+MIN_FFT_AMP = 1e-3
 
 SAVE = True             # write the figures next to the .npz
+SAVE_PICKLE = True      # ALSO save each figure as <name>.fig.pickle:
+                        # reopen it fully interactive (Qt zoom/cursor)
+                        # with openFigure.py
 OVERWRITE_FIG = True    # False -> keep existing figure files
 FIG_FORMAT = "png"      # figure format: png or pdf
 
@@ -120,8 +123,12 @@ def load_run(path):
     n_cut = int(np.isnan(FU).sum() + np.isnan(FV).sum())
     if REGION == "ROI":
         _m = _g("MASK_ROI").astype(float)[:, :, None]
+        _m = np.where(_m > 0, 1.0, np.nan)   # outside ROI -> NaN, not 0
         FU = FU * _m
         FV = FV * _m
+    # Region-mean spectra per frequency (for the scatter figure).
+    fu_mean = np.nanmean(FU.reshape(-1, f.size), axis=0)
+    fv_mean = np.nanmean(FV.reshape(-1, f.size), axis=0)
     with np.errstate(divide="ignore", invalid="ignore"):
         rp = (FV / FU) ** 2
     rp[~np.isfinite(rp)] = np.nan
@@ -145,6 +152,7 @@ def load_run(path):
                 dphi=dphi, F_SCALE=F_SCALE, f=f,
                 pol_mean=pol_mean, pol_med=pol_med,
                 pol_p25=pol_p25, pol_p75=pol_p75,
+                fu_mean=fu_mean, fv_mean=fv_mean,
                 funit=funit, _anno=_anno)
 
 
@@ -160,6 +168,7 @@ def make_polarization(normalize):
     fig, ax = plt.subplots(figsize=(9, 6))
     if np.isfinite(frot) and frot:
         theory = 2.0 * ((2.0 * frot / f[m]) ** 2 - 1.0)
+        # theory = ((2.0 * frot / f[m]) ** 2 - 1.0)
         ax.plot(ff[m], theory, "k-", lw=2.2,
                 label=r"$2[(2f_{\mathrm{rot}}/f)^2-1]$  (IW)")
     ax.plot(ff[m], pol_mean[m], lw=1.2, label=r"mean $P_V/P_U$")
@@ -181,25 +190,75 @@ def make_polarization(normalize):
     return fig
 
 
+def make_polarization_scatter(normalize):
+    """Scatter of the region-mean spectra, one point per frequency:
+    x = <FFT_V>**2, y = <FFT_U>**2 * 2[(2 f_rot/f)**2 - 1], coloured by the
+    frequency (f / F_SCALE when normalize); the black line y = x is the
+    inertial-wave prediction. Restricted to f > 0 with a positive IW factor
+    (f < 2*sqrt(2)*f_rot) so the log-log axes hold every point."""
+    fscale = F_SCALE if (normalize and np.isfinite(F_SCALE) and F_SCALE) else 1.0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        factor =  ((2.0 * frot / f) ** 2 - 1.0)
+    x = fv_mean ** 2
+    y = fu_mean ** 2 * factor
+    m = ((f > 0) & (factor > 0)
+         & np.isfinite(x) & np.isfinite(y) & (x > 0) & (y > 0))
+    fig, ax = plt.subplots(figsize=(9, 6))
+    if not m.any():
+        print("  [warn] no valid points for the polarization scatter")
+    else:
+        lo = min(x[m].min(), y[m].min())
+        hi = max(x[m].max(), y[m].max())
+        ax.plot([lo, hi], [lo, hi], "k-", lw=1.5, label=r"$y=x$  (IW)")
+        sc = ax.scatter(x[m], y[m], s=22, c=f[m] / fscale, cmap="viridis",
+                        zorder=3,
+                        label=r"$\langle\widehat{U}\rangle^2\,"
+                              r"2[(2f_{\mathrm{rot}}/f)^2-1]$ vs "
+                              r"$\langle\widehat{V}\rangle^2$")
+        cb = fig.colorbar(sc, ax=ax)
+        cb.set_label(r"$f^*$" if fscale != 1.0
+                     else "frequency (%s)" % funit, fontsize=11)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+    ax.set_xlabel(r"$\langle\widehat{V}\rangle^2$  (m$^2$/s$^2$)",
+                  fontsize=13)
+    ax.set_ylabel(r"$\langle\widehat{U}\rangle^2\,"
+                  r"2[(2f_{\mathrm{rot}}/f)^2-1]$  (m$^2$/s$^2$)",
+                  fontsize=13)
+    ax.set_title("%s  (%s)%s   (%s)"
+                 % (run, REGION,
+                    "   (non-dimensional)" if normalize else "", _anno),
+                 fontsize=11)
+    ax.grid(True, which="both", ls=":", alpha=0.4)
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    return fig
+
+
 def process_run(path, show):
-    """Load one run, draw and save POLARIZATION_DIM / _NODIM into its
-    PostProcessing folder; show when `show` (single-run mode)."""
+    """Load one run, draw and save POLARIZATION[_SCATTER]_DIM / _NODIM into
+    its PostProcessing folder; show when `show` (single-run mode)."""
     globals().update(load_run(path))
     for _norm in (False, True):
-        _fig = make_polarization(_norm)
-        if SAVE:
-            _out = figure_filename(os.path.join(out_dir, "POLARIZATION"),
-                                   FIG_FORMAT, normalized=_norm)
-            if OVERWRITE_FIG or not os.path.isfile(_out):
-                _fig.savefig(_out, dpi=200, bbox_inches="tight")
-                print("Figure written to:\n  %s" % _out)
+        for _builder, _stem in ((make_polarization, "POLARIZATION"),
+                                (make_polarization_scatter,
+                                 "POLARIZATION_SCATTER")):
+            _fig = _builder(_norm)
+            if SAVE:
+                _out = figure_filename(os.path.join(out_dir, _stem),
+                                       FIG_FORMAT, normalized=_norm)
+                if OVERWRITE_FIG or not os.path.isfile(_out):
+                    _fig.savefig(_out, dpi=200, bbox_inches="tight")
+                    print("Figure written to:\n  %s" % _out)
+                    if SAVE_PICKLE:
+                        pickle_figure(_fig, _out)
+                else:
+                    print("Figure exists (OVERWRITE_FIG=False), kept:\n  %s"
+                          % _out)
+            if show:
+                plt.show()
             else:
-                print("Figure exists (OVERWRITE_FIG=False), kept:\n  %s"
-                      % _out)
-        if show:
-            plt.show()
-        else:
-            plt.close(_fig)
+                plt.close(_fig)
 
 
 if BATCH:
